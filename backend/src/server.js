@@ -18,10 +18,16 @@ import { apiKeyAuth } from './middleware/roleAuth.js';
 dotenv.config();
 
 const app = express();
-const PORT = Number(process.env.PORT) || 5000;
+const resolvedPort = Number(
+  process.env.PORT ||
+  process.env.APP_PORT ||
+  process.env.NODEJS_PORT ||
+  process.env.PASSENGER_PORT ||
+  0
+);
 
-if (!process.env.PORT) {
-  console.warn('⚠️  PORT is not set. Falling back to 5000.');
+if (!resolvedPort) {
+  console.warn('⚠️  No port environment variable found. Using a random free port.');
 }
 
 app.use(cors());
@@ -64,6 +70,30 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'OK', timestamp: new Date().toISOString() });
 });
 
-app.listen(PORT, () => {
-  console.log(`🚀 Server running on http://localhost:${PORT}`);
-});
+function startServer(port) {
+  const server = app.listen(port, () => {
+    const actualPort = server.address()?.port;
+    console.log(`🚀 Server running on http://localhost:${actualPort}`);
+  });
+
+  server.on('error', (error) => {
+    if (error.code === 'EADDRINUSE') {
+      console.error(`❌ Port ${port} is already in use.`);
+
+      // If an explicit port was configured, fail fast so deployment logs are clear.
+      if (port) {
+        process.exit(1);
+      }
+
+      // If no explicit port is configured, retry with a random free port.
+      console.log('↻ Retrying with a random free port...');
+      startServer(0);
+      return;
+    }
+
+    console.error('❌ Server failed to start:', error);
+    process.exit(1);
+  });
+}
+
+startServer(resolvedPort);
