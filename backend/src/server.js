@@ -18,7 +18,11 @@ import { apiKeyAuth } from './middleware/roleAuth.js';
 dotenv.config();
 
 const app = express();
-const PORT = process.env.PORT || 5000;
+const PORT = Number(process.env.PORT) || 5000;
+
+if (!process.env.PORT) {
+  console.warn('⚠️  PORT is not set. Falling back to 5000.');
+}
 
 app.use(cors());
 app.use(express.json());

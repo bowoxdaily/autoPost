@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import fetch from 'node-fetch';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -12,9 +13,13 @@ if (!supabaseUrl || !supabaseAnonKey) {
 }
 
 // Anon client (for public operations)
-export const supabase = createClient(supabaseUrl || '', supabaseAnonKey || '');
+export const supabase = createClient(supabaseUrl || '', supabaseAnonKey || '', {
+  global: { fetch }
+});
 
 // Service role client (for admin operations like password hashing)
-export const supabaseAdmin = createClient(supabaseUrl || '', supabaseServiceKey || '');
+export const supabaseAdmin = createClient(supabaseUrl || '', supabaseServiceKey || '', {
+  global: { fetch }
+});
 
 export default supabase;
