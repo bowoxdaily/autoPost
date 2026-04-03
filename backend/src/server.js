@@ -36,11 +36,15 @@ app.use(express.json());
 // Initialize database
 initializeDatabase();
 
-// Run migrations on startup
-runMigrations().catch(err => {
-  console.warn('⚠️  Migration warning:', err.message);
-  console.log('📝 You may need to manually run: migrations/add_user_credentials.sql');
-});
+// Run migrations only when explicitly enabled to avoid heavy startup checks on shared hosting.
+if (process.env.RUN_MIGRATIONS_ON_STARTUP === 'true') {
+  runMigrations().catch(err => {
+    console.warn('⚠️  Migration warning:', err.message);
+    console.log('📝 You may need to manually run: migrations/add_user_credentials.sql');
+  });
+} else {
+  console.log('ℹ️  Skipping migration checks on startup (set RUN_MIGRATIONS_ON_STARTUP=true to enable).');
+}
 
 // Apply API key auth middleware (flexible auth: JWT or API key)
 app.use(apiKeyAuth);
