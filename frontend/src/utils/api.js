@@ -1,6 +1,7 @@
 import axios from 'axios';
 
-const API_BASE = '/api';
+const apiHost = (import.meta.env.VITE_API_URL || '').trim().replace(/\/$/, '');
+const API_BASE = apiHost ? `${apiHost}/api` : '/api';
 
 const api = axios.create({
   baseURL: API_BASE
@@ -37,7 +38,7 @@ api.interceptors.response.use(
     // Improve error message for network issues
     if (!error.response) {
       // Network error or no response
-      error.message = `Network Error: ${error.message}. Is backend running at http://localhost:5000?`;
+      error.message = `Network Error: ${error.message}. Check VITE_API_URL or backend availability.`;
     }
     
     return Promise.reject(error);
