@@ -1,0 +1,43 @@
+{
+  "settings": {
+    "geminiKey": "AIzaSyA9fbJ64MuLdRxq-rv9-2f3u2AhscNBydg",
+    "wpUrl": "https://blog.bowo-store.id",
+    "wpUser": "bowoaldi123",
+    "wpPass": "kiCx D3vP Ayc7 QgKU 1DLg jWZT",
+    "intervalWaktu": 1
+  },
+  "cronActive": true,
+  "logs": [
+    {
+      "id": 1774948299327,
+      "timestamp": "2026-03-31T09:11:39.327Z",
+      "title": "Proven Customer Engagement Techniques: A Definitive Guide",
+      "status": "success",
+      "postId": 37,
+      "link": "https://blog.bowo-store.id/proven-customer-engagement-techniques-a-definitive-guide/",
+      "seoScore": 88,
+      "keywords": "customer engagement techniques, customer loyalty, customer retention, engagement strategies, building customer relationships, customer experience, personalized marketing, feedback loops, community building, customer advocacy, digital engagement"
+    },
+    {
+      "id": 1774948104383,
+      "timestamp": "2026-03-31T09:08:24.383Z",
+      "title": "Auto Post",
+      "status": "failed",
+      "error": "Failed to post to WordPress: Sorry, you are not allowed to create posts as this user."
+    },
+    {
+      "id": 1774947984031,
+      "timestamp": "2026-03-31T09:06:24.031Z",
+      "title": "Auto Post",
+      "status": "failed",
+      "error": "Failed to post to WordPress: Sorry, you are not allowed to create posts as this user."
+    },
+    {
+      "id": 1774947561326,
+      "timestamp": "2026-03-31T08:59:21.326Z",
+      "title": "Auto Post",
+      "status": "failed",
+      "error": "Failed to post to WordPress: Sorry, you are not allowed to create posts as this user."
+    }
+  ]
+}

@@ -1,0 +1,157 @@
+/* === Modern Dashboard Styles === */
+
+/* --- General Layout & Background --- */
+.dashboard-modern {
+  background-color: #f7f9fc;
+}
+
+.dashboard-header {
+  font-family: 'Inter', sans-serif;
+  color: #1a202c;
+}
+
+/* --- Stat Cards --- */
+.stat-card {
+  background: linear-gradient(145deg, #4A5568, #2D3748); /* Dark Gray Gradient */
+  border-radius: 16px;
+  padding: 24px;
+  position: relative;
+  overflow: hidden;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+  box-shadow: 0 8px 24px rgba(45, 55, 72, 0.2);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.stat-card:hover {
+  transform: translateY(-6px);
+  box-shadow: 0 12px 32px rgba(45, 55, 72, 0.25);
+}
+
+.stat-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.stat-card-title {
+  font-size: 1rem;
+  font-weight: 600; /* Bold */
+  color: #E2E8F0; /* Light Gray */
+}
+
+.stat-card-icon {
+  background-color: rgba(255, 255, 255, 0.1);
+  padding: 12px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.stat-card-value {
+  font-size: 3rem;
+  font-weight: 800; /* Extra Bold */
+  color: #FFFFFF; /* White */
+  line-height: 1.1;
+}
+
+.stat-card-footer {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #A0AEC0; /* Lighter Gray */
+  margin-top: 16px;
+}
+
+/* Card Specific Icon Colors */
+.stat-card-total .stat-card-icon { color: #63B3ED; } /* Blue */
+.stat-card-success .stat-card-icon { color: #68D391; } /* Green */
+.stat-card-failed .stat-card-icon { color: #FC8181; } /* Red */
+.stat-card-status .stat-card-icon { color: #B2F5EA; } /* Teal */
+
+
+/* --- Action Buttons --- */
+.action-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  width: 100%;
+  padding: 20px;
+  border-radius: 12px;
+  font-weight: 600;
+  font-size: 1.1rem;
+  transition: all 0.3s ease;
+  border: none;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+}
+
+.action-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.action-button-primary {
+  background: linear-gradient(135deg, #5a67d8 0%, #805ad5 100%);
+  color: white;
+}
+
+.action-button-primary:hover:not(:disabled) {
+  transform: translateY(-3px);
+  box-shadow: 0 7px 14px rgba(90, 103, 216, 0.3);
+}
+
+.action-button-secondary {
+  background-color: #fff;
+  color: #4A5568;
+  border: 1px solid #E2E8F0;
+}
+
+.action-button-secondary:hover:not(:disabled) {
+  background-color: #F7FAFC;
+  border-color: #CBD5E0;
+  transform: translateY(-2px);
+}
+
+/* --- Status Indicator --- */
+.status-indicator {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 1.75rem;
+  font-weight: 700; /* Bold */
+  color: #FFFFFF; /* White */
+}
+
+.status-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  animation: pulse 2s infinite;
+  border: 2px solid #4A5568; /* Match dark bg */
+  box-shadow: 0 0 5px rgba(0,0,0,0.2);
+}
+
+.status-dot-active {
+  background-color: #68D391; /* Green */
+}
+
+.status-dot-inactive {
+  background-color: #FC8181; /* Red */
+  animation: none;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(0.9);
+    opacity: 0.7;
+  }
+}

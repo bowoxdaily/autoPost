@@ -1,0 +1,121 @@
+/* === Modern Dashboard Layout Styles === */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+:root {
+  --sidebar-bg: #111827; /* Darker Gray */
+  --sidebar-text: #d1d5db;
+  --sidebar-hover-bg: #1f2937;
+  --sidebar-active-bg: linear-gradient(90deg, rgba(99, 102, 241, 0.5), rgba(99, 102, 241, 0));
+  --sidebar-active-text: #ffffff;
+  --sidebar-active-border: #6366f1; /* Indigo */
+  --main-bg: #f9fafb;
+  --header-text: #111827;
+}
+
+.modern-layout {
+  font-family: 'Inter', sans-serif;
+}
+
+/* --- Sidebar --- */
+.sidebar {
+  background-color: var(--sidebar-bg);
+  transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  color: var(--sidebar-text);
+}
+
+.sidebar-header {
+  height: 65px; /* Match header height */
+}
+
+.sidebar-logo-link {
+  opacity: 1;
+  transition: opacity 0.3s ease;
+}
+
+.sidebar-logo-link:hover {
+  opacity: 0.85;
+}
+
+.sidebar-nav {
+  padding-top: 1rem;
+}
+
+.nav-link {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.85rem 1rem;
+  margin: 0 0.5rem 0.25rem 0.5rem;
+  border-radius: 8px;
+  font-weight: 500;
+  transition: background-color 0.2s ease, color 0.2s ease;
+  position: relative;
+}
+
+.nav-link:hover {
+  background-color: var(--sidebar-hover-bg);
+  color: white;
+}
+
+.nav-link.active {
+  background: var(--sidebar-active-bg);
+  color: var(--sidebar-active-text);
+  font-weight: 600;
+}
+
+.nav-link.active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 20%;
+  height: 60%;
+  width: 4px;
+  background-color: var(--sidebar-active-border);
+  border-radius: 0 4px 4px 0;
+}
+
+.sidebar-footer {
+  border-top: 1px solid #374151;
+}
+
+.logout-button {
+  background-color: #374151;
+}
+.logout-button:hover {
+  background-color: #ef4444; /* Red */
+}
+
+/* --- Header --- */
+.main-header {
+  height: 65px;
+  background-color: white;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.breadcrumbs span {
+  color: #6b7280;
+}
+.breadcrumbs a:hover {
+  text-decoration: underline;
+}
+
+.profile-button {
+  transition: background-color 0.2s ease;
+}
+
+.profile-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background-color: #e5e7eb;
+  color: #4b5563;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.profile-dropdown {
+  box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05);
+  border: 1px solid #f3f4f6;
+}
