@@ -1,5 +1,32 @@
 import axios from 'axios';
 
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function extractMeaningfulTags(query) {
+  const stopwords = new Set([
+    'professional', 'business', 'guide', 'tips', 'best', 'how', 'complete',
+    'article', 'strategy', 'strategies', 'panduan', 'terbaik', 'cara', 'untuk'
+  ]);
+
+  const words = String(query || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .split(/\s+/)
+    .map(w => w.trim())
+    .filter(Boolean)
+    .filter(w => w.length >= 3)
+    .filter(w => !stopwords.has(w));
+
+  // Keep up to 4 meaningful terms for better relevance.
+  const unique = [...new Set(words)].slice(0, 4);
+
+  // If query becomes too generic/empty, fallback to stable business terms.
+  if (unique.length === 0) return ['technology', 'finance'];
+  return unique;
+}
+
 /**
  * Fetch image using Loremflickr - generates random professional images
  * Truly free, no API key needed
@@ -8,47 +35,59 @@ import axios from 'axios';
  */
 export async function fetchImageFromUnsplash(query) {
   try {
-    // Loremflickr: Free random image service based on tags
-    // Format: https://loremflickr.com/WIDTH/HEIGHT/TAGS
-    // No authentication needed!
-    
-    const tags = query
-      .split(' ')
-      .slice(0, 2) // Use first 2 words as tags
-      .join(',')
-      .toLowerCase()
-      .replace(/[^a-z0-9,]/g, '');
-    
-    const imageUrl = `https://loremflickr.com/1280/720/${tags}`;
-    
-    console.log(`🖼️  [Image] Fetching image for: "${query}" (tags: ${tags})`);
-    
-    // Verify image is accessible
-    const response = await axios.head(imageUrl, { timeout: 5000 });
-    
-    if (response.status === 200) {
-      console.log(`✅ [Image] Image ready: ${imageUrl}`);
-      
+    // Unsplash Source: no API key, but search-based (returns a random image matching the query)
+    // Docs: https://source.unsplash.com/
+    const encodedQuery = encodeURIComponent(String(query || '').trim() || 'business');
+    const imageUrl = `https://source.unsplash.com/1280x720/?${encodedQuery}`;
+
+    console.log(`🖼️  [Image] Fetching via Unsplash Source for: "${query}"`);
+
+    // Download once to verify it's a real image (and to populate binary for WP upload via separate call)
+    // Here we just verify accessibility quickly.
+    const response = await axios.get(imageUrl, {
+      responseType: 'arraybuffer',
+      timeout: 15000,
+      maxRedirects: 5
+    });
+
+    if (response.data && response.data.byteLength > 10000) {
+      console.log(`✅ [Image] Unsplash Source image accessible for query`);
       return {
         url: imageUrl,
         downloadUrl: imageUrl,
-        credit: 'LoremFlickr - Free stock images',
+        credit: 'Unsplash Source',
         alt: query,
         width: 1280,
         height: 720
       };
     }
-    
-    throw new Error('Image not accessible');
+
+    throw new Error('Unsplash Source returned empty/invalid image');
   } catch (error) {
-    console.error(`❌ [Image] Loremflickr error: ${error.message}`);
-    
-    // Fallback to completely generic business image
+    console.error(`❌ [Image] Unsplash Source error: ${error.message}`);
+
+    // Fallback to LoremFlickr (random) as last-optional provider
     try {
-      return await getGenericFallbackImage();
+      const tags = extractMeaningfulTags(query).join(',');
+      const imageUrl = `https://loremflickr.com/1280/720/${tags}`;
+
+      console.log(`ℹ️  [Image] Fallback to LoremFlickr (tags: ${tags})`);
+
+      const headRes = await axios.head(imageUrl, { timeout: 10000 });
+      if (headRes.status === 200) {
+        return {
+          url: imageUrl,
+          downloadUrl: imageUrl,
+          credit: 'LoremFlickr - Free stock images',
+          alt: query,
+          width: 1280,
+          height: 720
+        };
+      }
+      throw new Error('LoremFlickr not accessible');
     } catch (fallbackError) {
       console.error(`⚠️  [Image] Fallback also failed: ${fallbackError.message}`);
-      return null;
+      return await getGenericFallbackImage();
     }
   }
 }
@@ -62,9 +101,8 @@ export async function getGenericFallbackImage() {
   try {
     console.log(`🖼️  [Image] Using generic business image fallback`);
     
-    // Use a reliable generic business image
-    // This is a truly public, always-available image
-    const imageUrl = 'https://via.placeholder.com/1280x720/4a5568/ffffff?text=Business+Article';
+    // Use Picsum as generic fallback (usually more stable than placeholder endpoints)
+    const imageUrl = 'https://picsum.photos/1280/720';
     
     console.log(`✅ [Image] Using placeholder image: ${imageUrl}`);
     
@@ -89,19 +127,33 @@ export async function getGenericFallbackImage() {
  * @returns {Promise<Buffer>} Image binary data
  */
 export async function downloadImageBuffer(imageUrl) {
-  try {
-    console.log(`📥 [Image] Downloading image from: ${imageUrl}`);
-    
-    const response = await axios.get(imageUrl, {
-      responseType: 'arraybuffer',
-      timeout: 10000
-    });
-    
-    console.log(`✅ [Image] Image downloaded (${response.data.length} bytes)`);
-    return Buffer.from(response.data);
-  } catch (error) {
-    console.error(`❌ [Image] Download error: ${error.message}`);
-    throw error;
+  const maxAttempts = 3;
+  const retryDelayMs = [700, 1500, 2500];
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      console.log(`📥 [Image] Downloading image from: ${imageUrl} (attempt ${attempt}/${maxAttempts})`);
+      
+      const response = await axios.get(imageUrl, {
+        responseType: 'arraybuffer',
+        timeout: 15000,
+        maxRedirects: 5
+      });
+      
+      console.log(`✅ [Image] Image downloaded (${response.data.length} bytes)`);
+      return Buffer.from(response.data);
+    } catch (error) {
+      const isLastAttempt = attempt === maxAttempts;
+      const status = error.response?.status;
+      console.warn(`⚠️  [Image] Download attempt ${attempt} failed${status ? ` (HTTP ${status})` : ''}: ${error.message}`);
+
+      if (isLastAttempt) {
+        console.error(`❌ [Image] Download error after ${maxAttempts} attempts: ${error.message}`);
+        throw error;
+      }
+
+      await sleep(retryDelayMs[attempt - 1] || 1000);
+    }
   }
 }
 

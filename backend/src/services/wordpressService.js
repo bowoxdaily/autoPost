@@ -1,6 +1,112 @@
 import axios from 'axios';
 import { Buffer } from 'buffer';
 
+function tokenize(text) {
+  return String(text || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .split(/\s+/)
+    .map(t => t.trim())
+    .filter(t => t.length >= 3); // avoid too-short noise words
+}
+
+function normalizeSlugOrName(text) {
+  return String(text || '')
+    .toLowerCase()
+    .trim()
+    .replace(/[_-]+/g, ' ')
+    .replace(/[^a-z0-9\s]/g, ' ');
+}
+
+function sanitizeSlug(text) {
+  return String(text || '')
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9\s-]/g, '')
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '');
+}
+
+async function fetchAllCategories(wpUrl, auth, { perPage = 100, maxPages = 10 } = {}) {
+  const cleanUrl = wpUrl.replace(/\/$/, '');
+  const headers = {
+    'Authorization': `Basic ${auth}`,
+    'Content-Type': 'application/json'
+  };
+
+  const all = [];
+  for (let page = 1; page <= maxPages; page++) {
+    const res = await axios.get(`${cleanUrl}/wp-json/wp/v2/categories`, {
+      headers,
+      params: { per_page: perPage, page },
+      timeout: 15000
+    });
+
+    if (Array.isArray(res.data) && res.data.length > 0) {
+      all.push(...res.data);
+    }
+
+    if (!Array.isArray(res.data) || res.data.length < perPage) break;
+  }
+  return all;
+}
+
+function pickBestCategoryFromExisting({ categories, keywords = [], title = '', metaDescription = '' }) {
+  if (!Array.isArray(categories) || categories.length === 0) return null;
+
+  const uncategorized =
+    categories.find(c => String(c.slug || '').toLowerCase() === 'uncategorized') ||
+    categories.find(c => String(c.name || '').toLowerCase() === 'uncategorized') ||
+    null;
+
+  const keywordPhrases = (Array.isArray(keywords) && keywords.length > 0 ? keywords : [])
+    .map(k => String(k || '').trim())
+    .filter(Boolean);
+
+  const titleTokens = tokenize(title);
+  const metaTokens = tokenize(metaDescription);
+  const allTokens = new Set([...titleTokens, ...metaTokens, ...keywordPhrases.flatMap(p => tokenize(p))]);
+
+  let best = null;
+  let bestScore = 0;
+
+  for (const c of categories) {
+    const name = String(c.name || '');
+    const slug = String(c.slug || '');
+    const description = String(c.description || '');
+
+    const haystackNorm = normalizeSlugOrName(`${name} ${slug} ${description}`);
+
+    let score = 0;
+
+    // Phrase match (e.g., "email marketing")
+    for (const phrase of keywordPhrases) {
+      const phraseNorm = normalizeSlugOrName(phrase);
+      if (!phraseNorm) continue;
+
+      if (haystackNorm.includes(phraseNorm)) score += 12;
+    }
+
+    // Token overlap (e.g., "seo", "marketing")
+    const hayTokens = new Set(tokenize(haystackNorm));
+    let overlap = 0;
+    for (const t of allTokens) {
+      if (hayTokens.has(t)) overlap++;
+    }
+    score += overlap * 2;
+
+    if (!best || score > bestScore) {
+      best = c;
+      bestScore = score;
+    }
+  }
+
+  // Require at least some relevance; otherwise fallback to Uncategorized.
+  if (best && bestScore > 0) return best;
+  return uncategorized || categories[0] || null;
+}
+
 export async function postToWordPress(wpUrl, wpUser, wpPass, title, content, metaDescription = '', seoData = {}) {
   try {
     const auth = Buffer.from(`${wpUser}:${wpPass}`).toString('base64');
@@ -18,9 +124,29 @@ export async function postToWordPress(wpUrl, wpUser, wpPass, title, content, met
     if (metaDescription) {
       postData.excerpt = metaDescription;
     }
+    if (seoData?.slug) {
+      const cleanSlug = sanitizeSlug(seoData.slug);
+      if (cleanSlug) postData.slug = cleanSlug;
+    }
 
-    // Note: Tags require IDs (not names) and would need separate API calls to create/lookup
-    // Skipping tags to avoid conflicts. Can be added via WordPress UI or category instead.
+    // Pick the most relevant *existing* WordPress category and assign it to the post
+    try {
+      const keywords = Array.isArray(seoData.keywords) ? seoData.keywords : [];
+      const categories = await fetchAllCategories(wpUrl, auth);
+      const bestCategory = pickBestCategoryFromExisting({
+        categories,
+        keywords,
+        title,
+        metaDescription
+      });
+
+      if (bestCategory?.id) {
+        postData.categories = [bestCategory.id];
+      }
+    } catch (categoryError) {
+      console.warn(`⚠️  [WordPress] Category selection skipped: ${categoryError.response?.data?.message || categoryError.message}`);
+      // Continue without category to avoid blocking post creation
+    }
 
     // Add SEO fields via meta if supported by theme/plugin
     if (seoData.seoScore !== undefined) {

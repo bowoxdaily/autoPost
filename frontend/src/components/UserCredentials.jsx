@@ -8,7 +8,11 @@ export default function UserCredentials() {
     gemini_api_key: '',
     wordpress_url: '',
     wordpress_username: '',
-    wordpress_password: ''
+    wordpress_password: '',
+    content_language: 'id',
+    trending_enabled: true,
+    trending_niche: '',
+    include_images: true
   });
 
   const [showPasswords, setShowPasswords] = useState({
@@ -41,8 +45,8 @@ export default function UserCredentials() {
   };
 
   const handleInputChange = (e) => {
-    const { name, value } = e.target;
-    setCredentials(prev => ({ ...prev, [name]: value }));
+    const { name, value, type, checked } = e.target;
+    setCredentials(prev => ({ ...prev, [name]: type === 'checkbox' ? checked : value }));
     setMessage({ type: '', text: '' });
   };
 
@@ -184,7 +188,102 @@ export default function UserCredentials() {
 
         <hr className="section-divider" />
 
-        {/* WordPress Credentials Section */}
+        {/* Content Language Section */}
+        <section className="credential-section">
+          <div className="section-header">
+            <div>
+              <h3>Post Language</h3>
+              <p className="section-description">
+                Choose the language used when generating posts with Gemini.
+              </p>
+            </div>
+          </div>
+
+          <div className="form-group">
+            <label htmlFor="content_language">Content Language</label>
+            <select
+              id="content_language"
+              name="content_language"
+              value={credentials.content_language || 'id'}
+              onChange={handleInputChange}
+              className="input-field"
+            >
+              <option value="id">Bahasa Indonesia</option>
+              <option value="en">English</option>
+            </select>
+          </div>
+        </section>
+
+        <hr className="section-divider" />
+
+        {/* Trending Topic Section */}
+        <section className="credential-section">
+          <div className="section-header">
+            <div>
+              <h3>Trending Topic</h3>
+              <p className="section-description">
+                Aktifkan Google Trends untuk memilih topik berdasarkan yang sedang ramai.
+              </p>
+            </div>
+          </div>
+
+          <div className="form-group">
+            <label className="inline-flex items-center gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                name="trending_enabled"
+                checked={!!credentials.trending_enabled}
+                onChange={handleInputChange}
+              />
+              <span className="text-sm font-medium">Use Google Trends</span>
+            </label>
+          </div>
+
+          <div className="form-group">
+            <label htmlFor="trending_niche">Niche keyword (opsional)</label>
+            <input
+              id="trending_niche"
+              type="text"
+              name="trending_niche"
+              value={credentials.trending_niche || ''}
+              onChange={handleInputChange}
+              placeholder="Contoh: marketing, crypto, kesehatan"
+              className="input-field"
+            />
+            <p className="text-xs text-gray-500 mt-2">
+              Jika diisi, sistem akan mencoba memilih tren yang paling mendekati niche ini.
+            </p>
+          </div>
+        </section>
+
+        <hr className="section-divider" />
+
+        {/* Image Option Section */}
+        <section className="credential-section">
+          <div className="section-header">
+            <div>
+              <h3>Featured Image</h3>
+              <p className="section-description">
+                Pilih apakah post otomatis menggunakan gambar featured atau tanpa gambar.
+              </p>
+            </div>
+          </div>
+
+          <div className="form-group">
+            <label className="inline-flex items-center gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                name="include_images"
+                checked={!!credentials.include_images}
+                onChange={handleInputChange}
+              />
+              <span className="text-sm font-medium">Use featured image for posts</span>
+            </label>
+          </div>
+        </section>
+
+        <hr className="section-divider" />
+
         <section className="credential-section">
           <div className="section-header">
             <div>

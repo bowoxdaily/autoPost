@@ -15,7 +15,7 @@ export async function getUserSettings(req, res) {
 
     const { data, error } = await supabaseAdmin
       .from('users')
-      .select('gemini_api_key, wordpress_url, wordpress_username, wordpress_password')
+      .select('gemini_api_key, wordpress_url, wordpress_username, wordpress_password, content_language, trending_enabled, trending_niche, include_images')
       .eq('id', userId)
       .single();
 
@@ -33,7 +33,11 @@ export async function getUserSettings(req, res) {
       gemini_api_key: data.gemini_api_key ? decrypt(data.gemini_api_key) : '',
       wordpress_url: data.wordpress_url ? decrypt(data.wordpress_url) : '',
       wordpress_username: data.wordpress_username ? decrypt(data.wordpress_username) : '',
-      wordpress_password: data.wordpress_password ? decrypt(data.wordpress_password) : ''
+      wordpress_password: data.wordpress_password ? decrypt(data.wordpress_password) : '',
+      content_language: data.content_language || 'id',
+      trending_enabled: data.trending_enabled ?? true,
+      trending_niche: data.trending_niche || '',
+      include_images: data.include_images ?? true
     };
 
     res.json({
@@ -58,22 +62,66 @@ export async function updateUserSettings(req, res) {
       return res.status(401).json({ error: 'User not authenticated or ID missing' });
     }
 
-    const { gemini_api_key, wordpress_url, wordpress_username, wordpress_password } = req.body;
+    const { gemini_api_key, wordpress_url, wordpress_username, wordpress_password, content_language, trending_enabled, trending_niche, include_images } = req.body;
 
     // Validate input
-    if (!gemini_api_key && !wordpress_url) {
+    const noUsefulInput =
+      gemini_api_key === undefined &&
+      wordpress_url === undefined &&
+      content_language === undefined &&
+      trending_enabled === undefined &&
+      trending_niche === undefined &&
+      include_images === undefined;
+
+    if (noUsefulInput) {
       return res.status(400).json({ 
-        error: 'At least one credential must be provided' 
+        error: 'At least one setting must be provided' 
       });
     }
 
-    // Encrypt sensitive data
-    const encryptedSettings = {
-      gemini_api_key: gemini_api_key ? encrypt(gemini_api_key) : null,
-      wordpress_url: wordpress_url ? encrypt(wordpress_url) : null,
-      wordpress_username: wordpress_username ? encrypt(wordpress_username) : null,
-      wordpress_password: wordpress_password ? encrypt(wordpress_password) : null
-    };
+    if (content_language && !['id', 'en'].includes(content_language)) {
+      return res.status(400).json({
+        error: 'Invalid language. Allowed values: id or en'
+      });
+    }
+
+    if (trending_enabled !== undefined && typeof trending_enabled !== 'boolean') {
+      return res.status(400).json({
+        error: 'Invalid trending_enabled value. Must be boolean.'
+      });
+    }
+    if (include_images !== undefined && typeof include_images !== 'boolean') {
+      return res.status(400).json({
+        error: 'Invalid include_images value. Must be boolean.'
+      });
+    }
+
+    // Build partial update object (do not overwrite existing values with null)
+    const encryptedSettings = {};
+    if (gemini_api_key !== undefined) {
+      encryptedSettings.gemini_api_key = gemini_api_key ? encrypt(gemini_api_key) : null;
+    }
+    if (wordpress_url !== undefined) {
+      encryptedSettings.wordpress_url = wordpress_url ? encrypt(wordpress_url) : null;
+    }
+    if (wordpress_username !== undefined) {
+      encryptedSettings.wordpress_username = wordpress_username ? encrypt(wordpress_username) : null;
+    }
+    if (wordpress_password !== undefined) {
+      encryptedSettings.wordpress_password = wordpress_password ? encrypt(wordpress_password) : null;
+    }
+    if (content_language !== undefined) {
+      encryptedSettings.content_language = content_language;
+    }
+    if (trending_enabled !== undefined) {
+      encryptedSettings.trending_enabled = trending_enabled;
+    }
+    if (trending_niche !== undefined) {
+      encryptedSettings.trending_niche = trending_niche;
+    }
+    if (include_images !== undefined) {
+      encryptedSettings.include_images = include_images;
+    }
 
     // Update user settings
     const { data, error } = await supabaseAdmin
@@ -95,7 +143,11 @@ export async function updateUserSettings(req, res) {
         gemini_api_key: data.gemini_api_key ? '***' : '',
         wordpress_url: data.wordpress_url ? decrypt(data.wordpress_url) : '',
         wordpress_username: data.wordpress_username ? '***' : '',
-        wordpress_password: data.wordpress_password ? '***' : ''
+        wordpress_password: data.wordpress_password ? '***' : '',
+        content_language: data.content_language || 'id',
+        trending_enabled: data.trending_enabled ?? true,
+        trending_niche: data.trending_niche || '',
+        include_images: data.include_images ?? true
       }
     });
   } catch (error) {

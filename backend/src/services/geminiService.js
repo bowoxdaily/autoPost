@@ -1,6 +1,51 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
-export async function generatePostContent(apiKey, topic) {
+function slugify(value) {
+  return String(value || '')
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9\s-]/g, '')
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '');
+}
+
+function normalizeOutput(parsed, topic, language) {
+  const fallbackTitle = language === 'en'
+    ? `Best ${topic}: Complete Guide`
+    : `Panduan Lengkap ${topic} Terbaik`;
+
+  const title = String(parsed?.title || fallbackTitle).trim();
+  const slug = slugify(parsed?.slug || title || topic);
+
+  let metaDescription = String(parsed?.metaDescription || '').trim();
+  if (!metaDescription) {
+    metaDescription = language === 'en'
+      ? `Discover the best practices for ${topic}. Complete guide with tips and strategies.`
+      : `Temukan praktik terbaik untuk ${topic}. Panduan lengkap dengan tips dan strategi.`;
+  }
+  if (metaDescription.length > 160) metaDescription = metaDescription.slice(0, 157).trim() + '...';
+
+  let keywords = Array.isArray(parsed?.keywords) ? parsed.keywords : [topic];
+  keywords = [...new Set(keywords.map(k => String(k).trim()).filter(Boolean))].slice(0, 6);
+  if (keywords.length === 0) keywords = [topic];
+
+  const seoScore = Number.isFinite(Number(parsed?.seoScore))
+    ? Number(parsed.seoScore)
+    : 75;
+
+  return {
+    title,
+    slug,
+    metaDescription,
+    content: parsed?.content || '',
+    imagePrompt: parsed?.imagePrompt || `professional ${topic.toLowerCase()} business illustration`,
+    keywords,
+    seoScore
+  };
+}
+
+export async function generatePostContent(apiKey, topic, language = 'id', refinementHint = '') {
   try {
     // Validate API key format
     if (!apiKey) {
@@ -15,10 +60,10 @@ export async function generatePostContent(apiKey, topic) {
     
     const genAI = new GoogleGenerativeAI(apiKey);
     
-    // Try latest model first, fallback to alternatives
+    // Prefer free-tier friendly flash models first
     let model;
     const modelsToTry = [
-      'gemini-2.5-flash',      // Latest model (newest)
+      'gemini-2.5-flash',
       'gemini-2.0-flash',
       'gemini-1.5-flash',
       'gemini-1.5-pro',
@@ -42,14 +87,20 @@ export async function generatePostContent(apiKey, topic) {
         console.log(`⚠️  [Gemini] Model ${modelName} not available: ${errorMsg}`);
         
         // Check for specific error patterns
-        if (errorMsg.includes('API key')) {
+        const invalidKeyPatterns = [
+          'api key not valid',
+          'invalid api key',
+          'api_key_invalid'
+        ];
+        if (invalidKeyPatterns.some(p => errorMsg.toLowerCase().includes(p))) {
           throw new Error(`❌ Gemini API key is invalid or incorrect. Error: ${errorMsg}`);
         }
         if (errorMsg.includes('quota') || errorMsg.includes('rate limit')) {
           throw new Error(`❌ API quota exceeded. Please check your Gemini API quota and billing. Error: ${errorMsg}`);
         }
         if (errorMsg.includes('not found') || errorMsg.includes('404')) {
-          throw new Error(`❌ Model not available in your region. Error: ${errorMsg}`);
+          // Model may be unavailable for this account/region, keep trying next fallback model.
+          continue;
         }
         if (errorMsg.includes('permission') || errorMsg.includes('403')) {
           throw new Error(`❌ Permission denied. Make sure your Gemini API has access enabled. Error: ${errorMsg}`);
@@ -69,7 +120,15 @@ export async function generatePostContent(apiKey, topic) {
       4. Ensure API is enabled in: https://console.cloud.google.com/apis/library/generativelanguage.googleapis.com`);
     }
 
-    const prompt = `Generate a SEO-optimized blog post about "${topic}". 
+    const languageInstruction =
+      language === 'en'
+        ? 'Write the entire output in English.'
+        : 'Tulis seluruh output dalam Bahasa Indonesia.';
+
+    const prompt = `Generate a SEO-optimized blog post about "${topic}".
+
+LANGUAGE REQUIREMENT:
+${languageInstruction}
 
 CRITICAL: NO DATES OR "LATEST" IN TITLE - Make it timeless for long-term ranking!
 
@@ -96,6 +155,8 @@ REQUIREMENTS FOR SEO PAGE 1 RANKING:
 4. CONTENT (1500+ words):
    - Use H2 headers for main sections
    - Use H3 headers for subsections
+   - Include at least one bullet list (<ul><li>) and one numbered list (<ol><li>)
+   - Add a short FAQ section with 3-5 questions at the end (H2 + H3)
    - Include target keyword in first 100 words
    - Keyword density 1-2%
    - Include actionable, proven tips
@@ -129,37 +190,69 @@ Return ONLY valid JSON (no markdown):
   "seoScore": 85-90
 }
 
-Make sure JSON is valid. Content must be actual 1500+ words.`;
+Make sure JSON is valid. Content must be actual 1500+ words.
+${refinementHint ? `\nREVISION INSTRUCTIONS (MUST FOLLOW):\n${refinementHint}\n` : ''}`;
 
     console.log(`📝 [Gemini] Generating SEO-optimized content for: ${topic}`);
     const result = await model.generateContent(prompt);
     const text = result.response.text();
     
+    function extractFirstJsonObject(input) {
+      const start = input.indexOf('{');
+      if (start === -1) return null;
+
+      let depth = 0;
+      let inString = false;
+      let escaped = false;
+      for (let i = start; i < input.length; i++) {
+        const ch = input[i];
+
+        if (inString) {
+          if (escaped) {
+            escaped = false;
+            continue;
+          }
+          if (ch === '\\') {
+            escaped = true;
+            continue;
+          }
+          if (ch === '"') {
+            inString = false;
+          }
+          continue;
+        }
+
+        if (ch === '"') {
+          inString = true;
+          continue;
+        }
+
+        if (ch === '{') depth++;
+        if (ch === '}') {
+          depth--;
+          if (depth === 0) return input.slice(start, i + 1);
+        }
+      }
+      return null;
+    }
+
     // Parse JSON from response - more robust extraction
     try {
-      let jsonMatch = text.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        let jsonStr = jsonMatch[0];
-        
-        // Try to fix common JSON issues
-        // Remove any markdown code block markers
+      const jsonCandidate = extractFirstJsonObject(text);
+      if (jsonCandidate) {
+        let jsonStr = jsonCandidate;
+
+        // Remove any markdown code block markers (defensive)
         jsonStr = jsonStr.replace(/```json\n?/g, '').replace(/```\n?/g, '');
         
         // Try parsing
         try {
           const parsed = JSON.parse(jsonStr);
           console.log(`✅ [Gemini] SEO Content generated: "${parsed.title}" (${parsed.seoScore}/100)`);
-          
-          // Ensure imagePrompt exists (fallback to topic-based)
-          if (!parsed.imagePrompt) {
-            parsed.imagePrompt = `professional ${topic.toLowerCase()} business illustration`;
-          }
-          
-          return parsed;
+          return normalizeOutput(parsed, topic, language);
         } catch (parseError) {
-          console.log(`⚠️  [Gemini] JSON parse error: ${parseError.message}. Attempting to clean content...`);
+          console.log(`⚠️  [Gemini] JSON parse error: ${parseError.message}. Attempting to recover...`);
           
-          // Try to clean problematic characters in content field
           // Extract sections more carefully
           const titleMatch = jsonStr.match(/"title"\s*:\s*"([^"]+)"/);
           const slugMatch = jsonStr.match(/"slug"\s*:\s*"([^"]+)"/);
@@ -171,58 +264,47 @@ Make sure JSON is valid. Content must be actual 1500+ words.`;
           let content = 'Unable to parse content';
           
           try {
-            // Find "content": position
-            const contentStartIdx = jsonStr.indexOf('"content"');
-            // Find "keywords": position
-            const keywordsStartIdx = jsonStr.indexOf('"keywords"');
-            
-            if (contentStartIdx !== -1 && keywordsStartIdx !== -1) {
-              // Extract substring between "content": and "keywords":
-              let contentSection = jsonStr.substring(contentStartIdx, keywordsStartIdx);
-              
-              // Find the opening quote after "content":
-              const openQuoteIdx = contentSection.indexOf('"', '"content"'.length);
-              // Find the last quote before "keywords" (this is tricky - need to find unescaped quote)
-              
-              // Use a better approach: find first " after "content": then find matching close "
-              let inString = false;
-              let escaped = false;
-              let stringStart = -1;
-              let stringEnd = -1;
-              
-              for (let i = '"content"'.length; i < contentSection.length; i++) {
-                const char = contentSection[i];
-                
-                if (escaped) {
-                  escaped = false;
-                  continue;
-                }
-                
-                if (char === '\\') {
-                  escaped = true;
-                  continue;
-                }
-                
-                if (char === '"') {
-                  if (!inString) {
-                    inString = true;
-                    stringStart = i + 1;
-                  } else {
-                    stringEnd = i;
-                    break;
-                  }
-                }
+            const indexOfAny = (str, patterns, startIdx = 0) => {
+              let best = -1;
+              for (const p of patterns) {
+                const i = str.indexOf(p, startIdx);
+                if (i !== -1 && (best === -1 || i < best)) best = i;
               }
-              
-              if (stringStart !== -1 && stringEnd !== -1) {
-                content = contentSection.substring(stringStart, stringEnd);
-                // Unescape common escape sequences
-                content = content
+              return best;
+            };
+
+            const contentKeyIdx = indexOfAny(jsonStr, ['"content"', '“content”']);
+            const imagePromptKeyIdx = indexOfAny(jsonStr, ['"imagePrompt"', '“imagePrompt”'], contentKeyIdx === -1 ? 0 : contentKeyIdx + 1);
+            const keywordsKeyIdx = indexOfAny(jsonStr, ['"keywords"', '“keywords”'], contentKeyIdx === -1 ? 0 : contentKeyIdx + 1);
+
+            // We prefer slicing until imagePrompt because prompt order is content -> imagePrompt -> keywords
+            const endIdx = imagePromptKeyIdx !== -1 ? imagePromptKeyIdx : keywordsKeyIdx;
+
+            if (contentKeyIdx !== -1 && endIdx !== -1 && endIdx > contentKeyIdx) {
+              const colonIdx = jsonStr.indexOf(':', contentKeyIdx);
+              if (colonIdx !== -1 && colonIdx < endIdx) {
+                let rawValue = jsonStr.slice(colonIdx + 1, endIdx).trim();
+
+                // Remove trailing comma if present
+                if (rawValue.endsWith(',')) rawValue = rawValue.slice(0, -1).trim();
+
+                // Remove wrapping quotes (either straight or smart quotes)
+                if (
+                  (rawValue.startsWith('"') && rawValue.endsWith('"')) ||
+                  (rawValue.startsWith('“') && rawValue.endsWith('”'))
+                ) {
+                  rawValue = rawValue.slice(1, -1);
+                }
+
+                // Unescape common escape sequences inside JSON string
+                rawValue = rawValue
                   .replace(/\\n/g, '\n')
                   .replace(/\\t/g, '\t')
                   .replace(/\\"/g, '"')
                   .replace(/\\\//g, '/')
                   .replace(/\\\\/g, '\\');
+
+                content = rawValue;
               }
             }
           } catch (extractError) {
@@ -242,8 +324,14 @@ Make sure JSON is valid. Content must be actual 1500+ words.`;
                 keywords = keywordsMatch[1].split(',').map(k => k.trim().replace(/"/g, ''));
               }
             }
-            
-            return {
+
+            // If content extraction failed, fallback to the full raw response text.
+            // This prevents the post from being published with "Unable to parse content".
+            if (!content || content === 'Unable to parse content') {
+              content = text;
+            }
+
+            return normalizeOutput({
               title: titleMatch[1],
               slug: slugMatch ? slugMatch[1] : topic.toLowerCase().replace(/\s+/g, '-'),
               metaDescription: descMatch ? descMatch[1] : `Learn about ${topic}`,
@@ -251,7 +339,7 @@ Make sure JSON is valid. Content must be actual 1500+ words.`;
               imagePrompt: `professional ${topic.toLowerCase()} business illustration`,
               keywords: keywords,
               seoScore: scoreMatch ? parseInt(scoreMatch[1]) : 75
-            };
+            }, topic, language);
           }
           
           throw parseError;
@@ -263,21 +351,28 @@ Make sure JSON is valid. Content must be actual 1500+ words.`;
     }
 
     console.log(`⚠️  [Gemini] No valid JSON found, using fallback format`);
-    return {
-      title: `Best ${topic}: Complete Guide`,
+    return normalizeOutput({
+      title: language === 'en' ? `Best ${topic}: Complete Guide` : `Panduan Lengkap ${topic} Terbaik`,
       slug: topic.toLowerCase().replace(/\s+/g, '-'),
-      metaDescription: `Discover the best practices for ${topic}. Complete guide with tips and strategies.`,
+      metaDescription: language === 'en'
+        ? `Discover the best practices for ${topic}. Complete guide with tips and strategies.`
+        : `Temukan praktik terbaik untuk ${topic}. Panduan lengkap dengan tips dan strategi.`,
       content: text,
       imagePrompt: `professional ${topic.toLowerCase()} business illustration`,
       keywords: [topic],
       seoScore: 0
-    };
+    }, topic, language);
   } catch (error) {
     console.error(`❌ [Gemini] Error: ${error.message}`);
     
     const errorMsg = error.message || error.toString();
     
-    if (errorMsg.includes('API key') || errorMsg.includes('invalid')) {
+    const invalidKeyPatterns = [
+      'api key not valid',
+      'invalid api key',
+      'api_key_invalid'
+    ];
+    if (invalidKeyPatterns.some(p => errorMsg.toLowerCase().includes(p))) {
       throw new Error(`❌ Gemini API Configuration Error: Invalid API key. 
       
 Steps to fix:

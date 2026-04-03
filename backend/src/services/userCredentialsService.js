@@ -14,7 +14,7 @@ export async function getUserCredentialsForPosting(userId) {
 
     const { data, error } = await supabaseAdmin
       .from('users')
-      .select('gemini_api_key, wordpress_url, wordpress_username, wordpress_password')
+      .select('gemini_api_key, wordpress_url, wordpress_username, wordpress_password, content_language, trending_enabled, trending_niche, include_images')
       .eq('id', userId)
       .single();
 
@@ -32,7 +32,11 @@ export async function getUserCredentialsForPosting(userId) {
       geminiKey: data.gemini_api_key ? decrypt(data.gemini_api_key) : null,
       wpUrl: data.wordpress_url ? decrypt(data.wordpress_url) : null,
       wpUser: data.wordpress_username ? decrypt(data.wordpress_username) : null,
-      wpPass: data.wordpress_password ? decrypt(data.wordpress_password) : null
+      wpPass: data.wordpress_password ? decrypt(data.wordpress_password) : null,
+      contentLanguage: data.content_language || 'id',
+      trendingEnabled: data.trending_enabled ?? true,
+      trendingNiche: data.trending_niche || '',
+      includeImages: data.include_images ?? true
     };
 
     // Validate required credentials
