@@ -1,7 +1,11 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { supabaseAdmin } from './supabase.js';
+
+async function getSupabaseAdminClient() {
+  const mod = await import('./supabase.js');
+  return mod.supabaseAdmin;
+}
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const dataDir = path.join(__dirname, '../../data');
@@ -66,6 +70,7 @@ export async function getSettings() {
 
 export async function getSettingsForUser(userId) {
   try {
+    const supabaseAdmin = await getSupabaseAdminClient();
     const { data: settings, error } = await supabaseAdmin
       .from('settings')
       .select('*')
@@ -108,6 +113,7 @@ export async function getCronActive() {
  */
 export async function addLog(userId, logEntry) {
   try {
+    const supabaseAdmin = await getSupabaseAdminClient();
     if (!userId) {
       throw new Error('User ID is required to add log');
     }
@@ -151,6 +157,7 @@ export async function addLog(userId, logEntry) {
  */
 export async function getLogs(userId, limit = 100) {
   try {
+    const supabaseAdmin = await getSupabaseAdminClient();
     if (!userId) {
       throw new Error('User ID is required to fetch logs');
     }
@@ -181,6 +188,7 @@ export async function getLogs(userId, limit = 100) {
  */
 export async function clearLogs(userId) {
   try {
+    const supabaseAdmin = await getSupabaseAdminClient();
     if (!userId) {
       throw new Error('User ID is required to clear logs');
     }

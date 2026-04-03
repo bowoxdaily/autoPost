@@ -14,12 +14,22 @@ if (!supabaseUrl || !supabaseAnonKey) {
 
 // Anon client (for public operations)
 export const supabase = createClient(supabaseUrl || '', supabaseAnonKey || '', {
-  global: { fetch }
+  global: { fetch },
+  auth: {
+    persistSession: false,
+    autoRefreshToken: false,
+    detectSessionInUrl: false
+  }
 });
 
 // Service role client (for admin operations like password hashing)
 export const supabaseAdmin = createClient(supabaseUrl || '', supabaseServiceKey || '', {
-  global: { fetch }
+  global: { fetch },
+  auth: {
+    persistSession: false,
+    autoRefreshToken: false,
+    detectSessionInUrl: false
+  }
 });
 
 export default supabase;
