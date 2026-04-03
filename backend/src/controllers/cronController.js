@@ -1,9 +1,13 @@
-import { startCronJob, stopCronJob, isCronJobRunning, runPostNow } from '../services/cronService.js';
 import { getCronActive, getSettings } from '../utils/database.js';
 import { supabaseAdmin } from '../utils/supabase.js';
 
+async function getCronService() {
+  return import('../services/cronService.js');
+}
+
 export async function startCronHandler(req, res) {
   try {
+    const { startCronJob, isCronJobRunning } = await getCronService();
     const userId = req.user?.id;
     if (!userId) {
       return res.status(401).json({ error: 'User ID not found' });
@@ -27,6 +31,7 @@ export async function startCronHandler(req, res) {
 
 export async function stopCronHandler(req, res) {
   try {
+    const { stopCronJob } = await getCronService();
     const stopped = await stopCronJob();
     
     // Return confirmation with updated status
@@ -45,6 +50,7 @@ export async function stopCronHandler(req, res) {
 
 export async function getCronStatusHandler(req, res) {
   try {
+    const { isCronJobRunning } = await getCronService();
     const userId = req.user?.id;
     if (!userId) {
       return res.status(401).json({ error: 'User ID not found' });
@@ -91,6 +97,7 @@ export async function getCronStatusHandler(req, res) {
 
 export async function runPostNowHandler(req, res) {
   try {
+    const { runPostNow } = await getCronService();
     const userId = req.user?.id;
     if (!userId) {
       return res.status(401).json({ error: 'User ID not found' });
