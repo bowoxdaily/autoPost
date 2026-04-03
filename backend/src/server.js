@@ -80,12 +80,10 @@ function startServer(port) {
     if (error.code === 'EADDRINUSE') {
       console.error(`❌ Port ${port} is already in use.`);
 
-      // If an explicit port was configured, fail fast so deployment logs are clear.
       if (port) {
         process.exit(1);
       }
 
-      // If no explicit port is configured, retry with a random free port.
       console.log('↻ Retrying with a random free port...');
       startServer(0);
       return;
