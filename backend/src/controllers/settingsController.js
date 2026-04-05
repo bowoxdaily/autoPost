@@ -17,10 +17,18 @@ export async function getSettingsHandler(req, res) {
       return res.status(404).json({ error: 'Settings not found' });
     }
 
-    // Don't expose hashed passwords
-    const safeSettings = { ...settings };
+    // Transform snake_case to camelCase for frontend consistency
+    const safeSettings = {
+      ...settings,
+      intervalWaktu: settings.interval_waktu,
+      wpUrl: settings.wp_url,
+      wpUser: settings.wp_user
+    };
     delete safeSettings.wp_pass_hash;
     delete safeSettings.gemini_key_hash;
+    delete safeSettings.interval_waktu;
+    delete safeSettings.wp_url;
+    delete safeSettings.wp_user;
 
     res.json(safeSettings);
   } catch (error) {
@@ -63,10 +71,18 @@ export async function updateSettingsHandler(req, res) {
       return res.status(400).json({ error: error.message });
     }
 
-    // Don't expose hashed passwords
-    const safeSettings = { ...updated };
+    // Transform snake_case to camelCase for frontend consistency
+    const safeSettings = {
+      ...updated,
+      intervalWaktu: updated.interval_waktu,
+      wpUrl: updated.wp_url,
+      wpUser: updated.wp_user
+    };
     delete safeSettings.wp_pass_hash;
     delete safeSettings.gemini_key_hash;
+    delete safeSettings.interval_waktu;
+    delete safeSettings.wp_url;
+    delete safeSettings.wp_user;
 
     res.json({
       success: true,
