@@ -52,6 +52,105 @@ async function fetchAllCategories(wpUrl, auth, { perPage = 100, maxPages = 10 } 
   return all;
 }
 
+async function findTagByName(wpUrl, auth, name) {
+  const cleanUrl = wpUrl.replace(/\/$/, '');
+  const headers = {
+    'Authorization': `Basic ${auth}`,
+    'Content-Type': 'application/json'
+  };
+
+  const res = await axios.get(`${cleanUrl}/wp-json/wp/v2/tags`, {
+    headers,
+    params: { search: name, per_page: 100 },
+    timeout: 15000
+  });
+
+  const normalizedTarget = normalizeSlugOrName(name);
+  const exact = (Array.isArray(res.data) ? res.data : []).find(tag => {
+    const nameNorm = normalizeSlugOrName(tag?.name || '');
+    const slugNorm = normalizeSlugOrName(tag?.slug || '');
+    return nameNorm === normalizedTarget || slugNorm === normalizedTarget;
+  });
+
+  return exact || null;
+}
+
+async function createTag(wpUrl, auth, name) {
+  const cleanUrl = wpUrl.replace(/\/$/, '');
+  const headers = {
+    'Authorization': `Basic ${auth}`,
+    'Content-Type': 'application/json'
+  };
+
+  const res = await axios.post(`${cleanUrl}/wp-json/wp/v2/tags`, {
+    name: String(name || '').trim(),
+    slug: sanitizeSlug(name)
+  }, {
+    headers,
+    timeout: 15000
+  });
+
+  return res.data;
+}
+
+async function resolveTagIdsFromKeywords(wpUrl, auth, keywords = [], { title = '', metaDescription = '' } = {}) {
+  const MAX_TAGS = 5;
+  const contextTokens = new Set([
+    ...tokenize(title),
+    ...tokenize(metaDescription)
+  ]);
+
+  const normalizedKeywords = [...new Set(
+    (Array.isArray(keywords) ? keywords : [])
+      .map(k => String(k || '').trim())
+      .filter(Boolean)
+  )]
+    .map(keyword => {
+      const keywordTokens = tokenize(keyword);
+      const overlap = keywordTokens.filter(t => contextTokens.has(t)).length;
+      const phraseInTitle = normalizeSlugOrName(title).includes(normalizeSlugOrName(keyword)) ? 1 : 0;
+      const score = overlap * 3 + phraseInTitle * 2;
+      return { keyword, score };
+    })
+    .sort((a, b) => b.score - a.score)
+    .map(item => item.keyword)
+    .slice(0, MAX_TAGS);
+
+  const tagIds = [];
+
+  for (const keyword of normalizedKeywords) {
+    try {
+      const existing = await findTagByName(wpUrl, auth, keyword);
+      if (existing?.id) {
+        tagIds.push(existing.id);
+        continue;
+      }
+
+      const created = await createTag(wpUrl, auth, keyword);
+      if (created?.id) {
+        tagIds.push(created.id);
+      }
+    } catch (tagError) {
+      // WP may return conflict if a similar tag exists; recover by searching again.
+      if (tagError?.response?.status === 400 || tagError?.response?.status === 409) {
+        try {
+          const fallback = await findTagByName(wpUrl, auth, keyword);
+          if (fallback?.id) {
+            tagIds.push(fallback.id);
+            continue;
+          }
+        } catch (_) {
+          // Ignore and continue with other tags.
+        }
+      }
+
+      console.warn(`⚠️  [WordPress] Tag skipped (${keyword}): ${tagError.response?.data?.message || tagError.message}`);
+    }
+  }
+
+  return [...new Set(tagIds)];
+}
+
 function pickBestCategoryFromExisting({ categories, keywords = [], title = '', metaDescription = '' }) {
   if (!Array.isArray(categories) || categories.length === 0) return null;
 
@@ -146,6 +245,20 @@ export async function postToWordPress(wpUrl, wpUser, wpPass, title, content, met
     } catch (categoryError) {
       console.warn(`⚠️  [WordPress] Category selection skipped: ${categoryError.response?.data?.message || categoryError.message}`);
       // Continue without category to avoid blocking post creation
+    }
+
+    // Resolve/create tags from SEO keywords and attach them to the post
+    try {
+      const tagIds = await resolveTagIdsFromKeywords(wpUrl, auth, seoData.keywords || [], {
+        title,
+        metaDescription
+      });
+      if (tagIds.length > 0) {
+        postData.tags = tagIds;
+      }
+    } catch (tagResolveError) {
+      console.warn(`⚠️  [WordPress] Tag assignment skipped: ${tagResolveError.response?.data?.message || tagResolveError.message}`);
+      // Continue without tags to avoid blocking post creation
     }
 
     // Add SEO fields via meta if supported by theme/plugin
