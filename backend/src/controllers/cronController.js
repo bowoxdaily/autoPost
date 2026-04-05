@@ -50,14 +50,27 @@ export async function stopCronHandler(req, res) {
 
 export async function getCronStatusHandler(req, res) {
   try {
-    const { isCronJobRunning } = await getCronService();
+    const { isCronJobRunning, startCronJob } = await getCronService();
     const userId = req.user?.id;
     if (!userId) {
       return res.status(401).json({ error: 'User ID not found' });
     }
     
     const isActive = await getCronActive();
-    const isRunning = isCronJobRunning();
+    let isRunning = isCronJobRunning();
+    
+    // Auto-recovery: If database says active but job not running in memory (e.g., after server restart)
+    // automatically restart the cron job
+    if (isActive && !isRunning) {
+      console.log(`🔄 Auto-recovering cron job for user ${userId}...`);
+      try {
+        await startCronJob(userId);
+        isRunning = isCronJobRunning();
+        console.log(`✅ Cron job auto-recovered for user ${userId}`);
+      } catch (recoveryError) {
+        console.warn(`⚠️  Could not auto-recover cron job: ${recoveryError.message}`);
+      }
+    }
     
     // Read settings from Supabase (not local file) to get latest interval
     let hours = 12; // Default
