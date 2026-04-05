@@ -5,10 +5,22 @@ import { postToWordPress, uploadImageToWordPress, setFeaturedImageForPost } from
 import { getUserCredentialsForPosting, getAiProviderAndKey } from './userCredentialsService.js';
 import { getYoastKeywords } from './yoastService.js';
 import { fetchImageFromUnsplash, downloadImageBuffer, getImageFilename } from './imageService.js';
-import { getTrendingTopic } from './trendingService.js';
+import { getTrendingTopic, getTrendingKeywords } from './trendingService.js';
 
 let cronJob = null;
 let currentUserId = null;
+
+function mergeSeoKeywords(aiKeywords = [], trendingKeywords = [], topic = '') {
+  return [...new Set(
+    [
+      ...(Array.isArray(trendingKeywords) ? trendingKeywords : []),
+      ...(Array.isArray(aiKeywords) ? aiKeywords : []),
+      topic
+    ]
+      .map(k => String(k || '').trim())
+      .filter(Boolean)
+  )].slice(0, 6);
+}
 
 function validateSeoGuardrails(postContent, topic) {
   const title = String(postContent?.title || '');
@@ -163,11 +175,16 @@ async function runAutoPost() {
       topic,
       contentLanguage
     });
+
+    const trendingKeywords = credentials.trendingEnabled
+      ? await getTrendingKeywords(contentLanguage, topic)
+      : [];
+    const mergedKeywords = mergeSeoKeywords(postContent.keywords, trendingKeywords, topic);
     
     // Extract SEO data from generated content
     const seoData = {
       seoScore: postContent.seoScore || 0,
-      keywords: postContent.keywords || [topic],
+      keywords: mergedKeywords,
       slug: postContent.slug || undefined
     };
 
@@ -185,8 +202,8 @@ async function runAutoPost() {
     let imageData = null;
     if (credentials.includeImages !== false) {
       try {
-        const primaryKeyword = postContent.keywords?.[0] || topic;
-        const keywordBlob = (postContent.keywords || []).slice(0, 6).join(' ');
+        const primaryKeyword = seoData.keywords?.[0] || topic;
+        const keywordBlob = (seoData.keywords || []).slice(0, 6).join(' ');
         const imageQuerySource = [
           String(primaryKeyword),
           String(keywordBlob),
@@ -329,11 +346,16 @@ export async function runPostNow(userId) {
       topic,
       contentLanguage
     });
+
+    const trendingKeywords = credentials.trendingEnabled
+      ? await getTrendingKeywords(contentLanguage, topic)
+      : [];
+    const mergedKeywords = mergeSeoKeywords(postContent.keywords, trendingKeywords, topic);
     
     // Extract SEO data from generated content
     const seoData = {
       seoScore: postContent.seoScore || 0,
-      keywords: postContent.keywords || [topic],
+      keywords: mergedKeywords,
       slug: postContent.slug || undefined
     };
 
@@ -351,8 +373,8 @@ export async function runPostNow(userId) {
     let imageData = null;
     if (credentials.includeImages !== false) {
       try {
-        const primaryKeyword = postContent.keywords?.[0] || topic;
-        const keywordBlob = (postContent.keywords || []).slice(0, 6).join(' ');
+        const primaryKeyword = seoData.keywords?.[0] || topic;
+        const keywordBlob = (seoData.keywords || []).slice(0, 6).join(' ');
         const imageQuerySource = [
           String(primaryKeyword),
           String(keywordBlob),

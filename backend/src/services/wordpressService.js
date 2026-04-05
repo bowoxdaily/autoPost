@@ -117,6 +117,15 @@ async function createTag(wpUrl, auth, name) {
   return res.data;
 }
 
+function extractExistingTermId(error) {
+  const code = error?.response?.data?.code;
+  const termId = error?.response?.data?.data?.term_id;
+  if (code === 'term_exists' && Number.isFinite(Number(termId))) {
+    return Number(termId);
+  }
+  return null;
+}
+
 async function resolveTagIdsFromKeywords(wpUrl, auth, keywords = [], { title = '', metaDescription = '' } = {}) {
   const MAX_TAGS = 5;
   const contextTokens = new Set([
@@ -156,6 +165,12 @@ async function resolveTagIdsFromKeywords(wpUrl, auth, keywords = [], { title = '
         tagIds.push(created.id);
       }
     } catch (tagError) {
+      const existingTermId = extractExistingTermId(tagError);
+      if (existingTermId) {
+        tagIds.push(existingTermId);
+        continue;
+      }
+
       // WP may return conflict if a similar tag exists; recover by searching again.
       if (tagError?.response?.status === 400 || tagError?.response?.status === 409) {
         try {
@@ -173,7 +188,39 @@ async function resolveTagIdsFromKeywords(wpUrl, auth, keywords = [], { title = '
     }
   }
 
-  return [...new Set(tagIds)];
+  // Fallback: if phrase-based tagging yields nothing, try token-based tags.
+  if (tagIds.length === 0) {
+    const tokenFallback = [...new Set(
+      normalizedKeywords
+        .flatMap(k => tokenize(k))
+        .filter(t => t.length >= 4 && !TAG_STOPWORDS.has(t))
+    )].slice(0, MAX_TAGS);
+
+    for (const token of tokenFallback) {
+      try {
+        const existing = await findTagByName(wpUrl, auth, token);
+        if (existing?.id) {
+          tagIds.push(existing.id);
+          continue;
+        }
+
+        const created = await createTag(wpUrl, auth, token);
+        if (created?.id) {
+          tagIds.push(created.id);
+        }
+      } catch (tagError) {
+        const existingTermId = extractExistingTermId(tagError);
+        if (existingTermId) {
+          tagIds.push(existingTermId);
+          continue;
+        }
+      }
+
+      if (tagIds.length >= MAX_TAGS) break;
+    }
+  }
+
+  return [...new Set(tagIds)].slice(0, MAX_TAGS);
 }
 
 function pickBestCategoryFromExisting({ categories, keywords = [], title = '', metaDescription = '' }) {

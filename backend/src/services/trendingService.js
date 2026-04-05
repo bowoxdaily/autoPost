@@ -143,3 +143,62 @@ export async function getTrendingTopic(language = 'id', niche = '') {
   return cleanNiche || pickRandom(FALLBACK_TOPICS[key]);
 }
 
+export async function getTrendingKeywords(language = 'id', seedKeyword = '') {
+  const { geo, hl } = getLanguageConfig(language);
+  const cleanSeed = String(seedKeyword || '').trim();
+
+  const uniq = (arr) => [...new Set((arr || []).map(v => String(v || '').trim()).filter(Boolean))];
+
+  try {
+    if (cleanSeed) {
+      try {
+        const relatedRaw = await googleTrends.relatedQueries({
+          keyword: cleanSeed,
+          geo,
+          hl
+        });
+        const relatedParsed = JSON.parse(relatedRaw);
+        const ranked = relatedParsed?.default?.rankedList || [];
+
+        const extractList = (listObj) => {
+          const arr = listObj?.rankedKeyword || [];
+          return Array.isArray(arr)
+            ? arr.map(i => i?.query).filter(q => q && q.trim())
+            : [];
+        };
+
+        const rising = extractList(ranked[1]);
+        const top = extractList(ranked[0]);
+        const relatedCandidates = uniq([cleanSeed, ...rising, ...top]).slice(0, 6);
+        if (relatedCandidates.length > 0) return relatedCandidates;
+      } catch (err) {
+        console.warn(`[Trending] related keywords failed for "${cleanSeed}": ${err.message}`);
+      }
+    }
+
+    const raw = await googleTrends.dailyTrends({
+      trendDate: new Date(),
+      geo,
+      hl
+    });
+
+    const parsed = JSON.parse(raw);
+    const days = parsed?.default?.trendingSearchesDays;
+    const today = Array.isArray(days) && days.length > 0 ? days[0] : null;
+    const searches = today?.trendingSearches;
+
+    if (Array.isArray(searches) && searches.length > 0) {
+      const daily = searches
+        .slice(0, 12)
+        .map(s => extractQueryFromTrendItem(s))
+        .filter(q => q && q.trim());
+
+      return uniq([cleanSeed, ...daily]).slice(0, 6);
+    }
+  } catch (error) {
+    console.warn(`[Trending] Failed to fetch trending keywords (${geo}): ${error.message}`);
+  }
+
+  return uniq([cleanSeed]);
+}
+
