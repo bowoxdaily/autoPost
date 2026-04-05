@@ -5,7 +5,10 @@ import '../styles/UserCredentials.css';
 
 export default function UserCredentials() {
   const [credentials, setCredentials] = useState({
+    ai_provider: 'gemini',
     gemini_api_key: '',
+    chatgpt_api_key: '',
+    claude_api_key: '',
     wordpress_url: '',
     wordpress_username: '',
     wordpress_password: '',
@@ -17,6 +20,8 @@ export default function UserCredentials() {
 
   const [showPasswords, setShowPasswords] = useState({
     gemini_api_key: false,
+    chatgpt_api_key: false,
+    claude_api_key: false,
     wordpress_password: false
   });
 
@@ -56,10 +61,23 @@ export default function UserCredentials() {
       setMessage({ type: '', text: '' });
 
       // Validation
-      if (!credentials.gemini_api_key && !credentials.wordpress_url) {
+      const providerApiKey = 
+        credentials.ai_provider === 'gemini' ? credentials.gemini_api_key :
+        credentials.ai_provider === 'chatgpt' ? credentials.chatgpt_api_key :
+        credentials.ai_provider === 'claude' ? credentials.claude_api_key : null;
+
+      if (!providerApiKey) {
         setMessage({
           type: 'error',
-          text: 'Please provide at least one credential (Gemini API Key or WordPress details)'
+          text: `Please provide API key for ${credentials.ai_provider}`
+        });
+        return;
+      }
+
+      if (!credentials.wordpress_url) {
+        setMessage({
+          type: 'error',
+          text: 'Please provide WordPress URL'
         });
         return;
       }
@@ -128,6 +146,38 @@ export default function UserCredentials() {
       )}
 
       <div className="credentials-content">
+        {/* AI Provider Selection Section */}
+        <section className="credential-section">
+          <div className="section-header">
+            <div>
+              <h3>🤖 AI Content Generator</h3>
+              <p className="section-description">
+                Choose your preferred AI provider for generating blog posts.
+              </p>
+            </div>
+          </div>
+
+          <div className="form-group">
+            <label htmlFor="ai_provider">Select AI Provider</label>
+            <select
+              id="ai_provider"
+              name="ai_provider"
+              value={credentials.ai_provider || 'gemini'}
+              onChange={handleInputChange}
+              className="input-field"
+            >
+              <option value="gemini">Google Gemini (Recommended)</option>
+              <option value="chatgpt" disabled>OpenAI ChatGPT (Coming Soon)</option>
+              <option value="claude" disabled>Anthropic Claude (Coming Soon)</option>
+            </select>
+            <p className="text-xs text-gray-500 mt-2">
+              Your API keys are encrypted and stored securely.
+            </p>
+          </div>
+        </section>
+
+        <hr className="section-divider" />
+
         {/* Gemini API Key Section */}
         <section className="credential-section">
           <div className="section-header">
@@ -188,7 +238,99 @@ export default function UserCredentials() {
 
         <hr className="section-divider" />
 
-        {/* Content Language Section */}
+        {/* ChatGPT API Key Section */}
+        <section className="credential-section">
+          <div className="section-header">
+            <div>
+              <h3>OpenAI ChatGPT API Key</h3>
+              <p className="section-description">
+                Enter your OpenAI API key for ChatGPT-powered content generation.
+                <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener noreferrer" className="help-link">
+                  Get your API key →
+                </a>
+              </p>
+            </div>
+          </div>
+
+          <div className="form-group">
+            <label htmlFor="chatgpt_api_key">ChatGPT API Key</label>
+            <div className="input-wrapper">
+              <input
+                id="chatgpt_api_key"
+                type={showPasswords.chatgpt_api_key ? 'text' : 'password'}
+                name="chatgpt_api_key"
+                value={credentials.chatgpt_api_key || ''}
+                onChange={handleInputChange}
+                placeholder="sk-..."
+                className="input-field"
+                disabled
+              />
+              <button
+                type="button"
+                onClick={() => setShowPasswords(prev => ({
+                  ...prev,
+                  chatgpt_api_key: !prev.chatgpt_api_key
+                }))}
+                className="toggle-password-btn"
+              >
+                {showPasswords.chatgpt_api_key ? <EyeOff size={18} /> : <Eye size={18} />}
+              </button>
+            </div>
+            <p className="text-xs text-gray-500 mt-2">
+              🚧 ChatGPT support coming soon!
+            </p>
+          </div>
+        </section>
+
+        <hr className="section-divider" />
+
+        {/* Claude API Key Section */}
+        <section className="credential-section">
+          <div className="section-header">
+            <div>
+              <h3>Anthropic Claude API Key</h3>
+              <p className="section-description">
+                Enter your Anthropic API key for Claude-powered content generation.
+                <a href="https://console.anthropic.com" target="_blank" rel="noopener noreferrer" className="help-link">
+                  Get your API key →
+                </a>
+              </p>
+            </div>
+          </div>
+
+          <div className="form-group">
+            <label htmlFor="claude_api_key">Claude API Key</label>
+            <div className="input-wrapper">
+              <input
+                id="claude_api_key"
+                type={showPasswords.claude_api_key ? 'text' : 'password'}
+                name="claude_api_key"
+                value={credentials.claude_api_key || ''}
+                onChange={handleInputChange}
+                placeholder="sk-ant-..."
+                className="input-field"
+                disabled
+              />
+              <button
+                type="button"
+                onClick={() => setShowPasswords(prev => ({
+                  ...prev,
+                  claude_api_key: !prev.claude_api_key
+                }))}
+                className="toggle-password-btn"
+              >
+                {showPasswords.claude_api_key ? <EyeOff size={18} /> : <Eye size={18} />}
+              </button>
+            </div>
+            <p className="text-xs text-gray-500 mt-2">
+              🚧 Claude support coming soon!
+            </p>
+          </div>
+        </section>
+
+        <hr className="section-divider" />
+
+        {/* Gemini API Key Section */}
         <section className="credential-section">
           <div className="section-header">
             <div>

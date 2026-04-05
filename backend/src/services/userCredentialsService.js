@@ -14,7 +14,7 @@ export async function getUserCredentialsForPosting(userId) {
 
     const { data, error } = await supabaseAdmin
       .from('users')
-      .select('gemini_api_key, wordpress_url, wordpress_username, wordpress_password, content_language, trending_enabled, trending_niche, include_images')
+      .select('ai_provider, gemini_api_key, chatgpt_api_key, claude_api_key, wordpress_url, wordpress_username, wordpress_password, content_language, trending_enabled, trending_niche, include_images')
       .eq('id', userId)
       .single();
 
@@ -28,8 +28,12 @@ export async function getUserCredentialsForPosting(userId) {
     }
 
     // Decrypt credentials
+    const aiProvider = data.ai_provider || 'gemini'; // Default to gemini for backward compatibility
     const decryptedCredentials = {
+      aiProvider,
       geminiKey: data.gemini_api_key ? decrypt(data.gemini_api_key) : null,
+      chatgptKey: data.chatgpt_api_key ? decrypt(data.chatgpt_api_key) : null,
+      claudeKey: data.claude_api_key ? decrypt(data.claude_api_key) : null,
       wpUrl: data.wordpress_url ? decrypt(data.wordpress_url) : null,
       wpUser: data.wordpress_username ? decrypt(data.wordpress_username) : null,
       wpPass: data.wordpress_password ? decrypt(data.wordpress_password) : null,
@@ -39,9 +43,15 @@ export async function getUserCredentialsForPosting(userId) {
       includeImages: data.include_images ?? true
     };
 
-    // Validate required credentials
-    if (!decryptedCredentials.geminiKey) {
-      throw new Error('Gemini API Key not configured');
+    // Validate required credentials based on provider
+    const providerApiKey = 
+      aiProvider === 'gemini' ? decryptedCredentials.geminiKey :
+      aiProvider === 'chatgpt' ? decryptedCredentials.chatgptKey :
+      aiProvider === 'claude' ? decryptedCredentials.claudeKey :
+      null;
+
+    if (!providerApiKey) {
+      throw new Error(`${aiProvider} API Key not configured`);
     }
     if (!decryptedCredentials.wpUrl || !decryptedCredentials.wpUser || !decryptedCredentials.wpPass) {
       throw new Error('WordPress credentials not fully configured');
@@ -73,7 +83,35 @@ export async function getWordPressCredentials(userId) {
 }
 
 /**
- * Get only Gemini API Key
+ * Get AI provider and its API key for content generation
+ * @param {string} userId - User ID from JWT token
+ * @returns {object} - { provider, apiKey }
+ */
+export async function getAiProviderAndKey(userId) {
+  try {
+    const credentials = await getUserCredentialsForPosting(userId);
+    
+    const providerApiKey = 
+      credentials.aiProvider === 'gemini' ? credentials.geminiKey :
+      credentials.aiProvider === 'chatgpt' ? credentials.chatgptKey :
+      credentials.aiProvider === 'claude' ? credentials.claudeKey :
+      null;
+
+    if (!providerApiKey) {
+      throw new Error(`No API key found for provider: ${credentials.aiProvider}`);
+    }
+
+    return {
+      provider: credentials.aiProvider,
+      apiKey: providerApiKey
+    };
+  } catch (error) {
+    throw error;
+  }
+}
+
+/**
+ * Get only Gemini API Key (deprecated - use getAiProviderAndKey instead)
  * @param {string} userId - User ID from JWT token
  * @returns {string} - Decrypted Gemini API Key
  */

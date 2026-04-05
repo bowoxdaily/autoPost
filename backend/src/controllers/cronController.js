@@ -5,6 +5,36 @@ async function getCronService() {
   return import('../services/cronService.js');
 }
 
+function computeNextRunByInterval(hours, now = new Date()) {
+  const safeHours = Number(hours) > 0 ? Number(hours) : 12;
+  const base = new Date(now);
+
+  // Cron pattern in service: `0 */N * * *` (minute 0 every N hours)
+  // So next run must snap to the next hour boundary that matches N.
+  base.setSeconds(0, 0);
+
+  const currentHour = base.getHours();
+  const currentMinute = now.getMinutes();
+  const remainder = currentHour % safeHours;
+
+  let hoursToAdd = (safeHours - remainder) % safeHours;
+
+  // If already on an aligned hour but minute > 0, next run is after full interval.
+  if (hoursToAdd === 0 && currentMinute > 0) {
+    hoursToAdd = safeHours;
+  }
+
+  base.setMinutes(0, 0, 0);
+  base.setHours(currentHour + hoursToAdd);
+
+  // Safety: ensure nextRun is always in the future.
+  if (base <= now) {
+    base.setHours(base.getHours() + safeHours);
+  }
+
+  return base.toISOString();
+}
+
 export async function startCronHandler(req, res) {
   try {
     const { startCronJob, isCronJobRunning } = await getCronService();
@@ -90,9 +120,7 @@ export async function getCronStatusHandler(req, res) {
     
     let nextRun = null;
     if (isActive && isRunning) {
-      const now = new Date();
-      const nextRunTime = new Date(now.getTime() + (hours * 60 * 60 * 1000));
-      nextRun = nextRunTime.toISOString();
+      nextRun = computeNextRunByInterval(hours);
     }
     
     res.json({

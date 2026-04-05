@@ -1,8 +1,8 @@
 import cron from 'node-cron';
 import { getSettings, getSettingsForUser, setCronActive, addLog } from '../utils/database.js';
-import { generatePostContent } from './geminiService.js';
+import { generatePostContent } from './contentGenerationService.js';
 import { postToWordPress, uploadImageToWordPress, setFeaturedImageForPost } from './wordpressService.js';
-import { getUserCredentialsForPosting } from './userCredentialsService.js';
+import { getUserCredentialsForPosting, getAiProviderAndKey } from './userCredentialsService.js';
 import { getYoastKeywords } from './yoastService.js';
 import { fetchImageFromUnsplash, downloadImageBuffer, getImageFilename } from './imageService.js';
 import { getTrendingTopic } from './trendingService.js';
@@ -40,8 +40,8 @@ function validateSeoGuardrails(postContent, topic) {
   };
 }
 
-async function generateSeoPostWithGuardrails({ geminiKey, topic, contentLanguage }) {
-  let postContent = await generatePostContent(geminiKey, topic, contentLanguage);
+async function generateSeoPostWithGuardrails({ provider, apiKey, topic, contentLanguage }) {
+  let postContent = await generatePostContent(provider, apiKey, topic, contentLanguage);
   const firstPass = validateSeoGuardrails(postContent, topic);
   if (firstPass.passed) return postContent;
 
@@ -50,7 +50,7 @@ async function generateSeoPostWithGuardrails({ geminiKey, topic, contentLanguage
 Keep the output strictly valid JSON with complete HTML content.`;
 
   console.log(`⚠️  [SEO Guardrail] First draft below threshold, regenerating once...`);
-  postContent = await generatePostContent(geminiKey, topic, contentLanguage, refinementHint);
+  postContent = await generatePostContent(provider, apiKey, topic, contentLanguage, refinementHint);
   return postContent;
 }
 
@@ -156,7 +156,10 @@ async function runAutoPost() {
     }
     
     const postContent = await generateSeoPostWithGuardrails({
-      geminiKey: credentials.geminiKey,
+      provider: credentials.aiProvider,
+      apiKey: credentials.aiProvider === 'gemini' ? credentials.geminiKey : 
+              credentials.aiProvider === 'chatgpt' ? credentials.chatgptKey :
+              credentials.aiProvider === 'claude' ? credentials.claudeKey : null,
       topic,
       contentLanguage
     });
@@ -319,7 +322,10 @@ export async function runPostNow(userId) {
     }
     
     const postContent = await generateSeoPostWithGuardrails({
-      geminiKey: credentials.geminiKey,
+      provider: credentials.aiProvider,
+      apiKey: credentials.aiProvider === 'gemini' ? credentials.geminiKey : 
+              credentials.aiProvider === 'chatgpt' ? credentials.chatgptKey :
+              credentials.aiProvider === 'claude' ? credentials.claudeKey : null,
       topic,
       contentLanguage
     });
