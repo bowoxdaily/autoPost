@@ -28,6 +28,30 @@ function sanitizeSlug(text) {
     .replace(/^-|-$/g, '');
 }
 
+const TAG_STOPWORDS = new Set([
+  // English
+  'the', 'and', 'for', 'with', 'from', 'into', 'about', 'your', 'you', 'how', 'what', 'why',
+  'best', 'guide', 'tips', 'complete', 'ultimate', 'essential', 'proven', 'new', 'latest',
+  'strategy', 'strategies', 'business', 'marketing', 'article', 'blog', 'post',
+  // Indonesian
+  'dan', 'yang', 'untuk', 'dengan', 'dari', 'dalam', 'pada', 'agar', 'atau', 'juga', 'ini', 'itu',
+  'cara', 'panduan', 'tips', 'terbaik', 'lengkap', 'baru', 'terbaru', 'artikel', 'postingan'
+]);
+
+function isMeaningfulTagKeyword(keyword) {
+  const cleaned = String(keyword || '').trim();
+  if (!cleaned) return false;
+
+  // Keep multi-word phrases as long as they contain at least one non-stopword token.
+  const parts = tokenize(cleaned);
+  if (parts.length === 0) return false;
+  if (parts.length === 1) {
+    return !TAG_STOPWORDS.has(parts[0]) && parts[0].length >= 3;
+  }
+
+  return parts.some(part => !TAG_STOPWORDS.has(part));
+}
+
 async function fetchAllCategories(wpUrl, auth, { perPage = 100, maxPages = 10 } = {}) {
   const cleanUrl = wpUrl.replace(/\/$/, '');
   const headers = {
@@ -105,6 +129,7 @@ async function resolveTagIdsFromKeywords(wpUrl, auth, keywords = [], { title = '
       .map(k => String(k || '').trim())
       .filter(Boolean)
   )]
+    .filter(isMeaningfulTagKeyword)
     .map(keyword => {
       const keywordTokens = tokenize(keyword);
       const overlap = keywordTokens.filter(t => contextTokens.has(t)).length;
