@@ -28,6 +28,17 @@ function sanitizeSlug(text) {
     .replace(/^-|-$/g, '');
 }
 
+const CATEGORY_STOPWORDS = new Set([
+  'the', 'and', 'for', 'with', 'from', 'into', 'about', 'your', 'you', 'how', 'what', 'why',
+  'best', 'guide', 'tips', 'complete', 'ultimate', 'essential', 'proven', 'new', 'latest',
+  'dan', 'yang', 'untuk', 'dengan', 'dari', 'dalam', 'pada', 'agar', 'atau', 'juga', 'ini', 'itu',
+  'cara', 'panduan', 'tips', 'terbaik', 'lengkap', 'baru', 'terbaru'
+]);
+
+function meaningfulTokens(text) {
+  return tokenize(text).filter(t => !CATEGORY_STOPWORDS.has(t));
+}
+
 const TAG_STOPWORDS = new Set([
   // English
   'the', 'and', 'for', 'with', 'from', 'into', 'about', 'your', 'you', 'how', 'what', 'why',
@@ -223,7 +234,7 @@ async function resolveTagIdsFromKeywords(wpUrl, auth, keywords = [], { title = '
   return [...new Set(tagIds)].slice(0, MAX_TAGS);
 }
 
-function pickBestCategoryFromExisting({ categories, keywords = [], title = '', metaDescription = '' }) {
+function pickBestCategoryFromExisting({ categories, keywords = [], title = '', metaDescription = '', topic = '' }) {
   if (!Array.isArray(categories) || categories.length === 0) return null;
 
   const uncategorized =
@@ -235,9 +246,15 @@ function pickBestCategoryFromExisting({ categories, keywords = [], title = '', m
     .map(k => String(k || '').trim())
     .filter(Boolean);
 
-  const titleTokens = tokenize(title);
-  const metaTokens = tokenize(metaDescription);
-  const allTokens = new Set([...titleTokens, ...metaTokens, ...keywordPhrases.flatMap(p => tokenize(p))]);
+  const titleTokens = meaningfulTokens(title);
+  const metaTokens = meaningfulTokens(metaDescription);
+  const topicTokens = meaningfulTokens(topic);
+  const allTokens = new Set([
+    ...titleTokens,
+    ...metaTokens,
+    ...topicTokens,
+    ...keywordPhrases.flatMap(p => meaningfulTokens(p))
+  ]);
 
   let best = null;
   let bestScore = 0;
@@ -248,6 +265,7 @@ function pickBestCategoryFromExisting({ categories, keywords = [], title = '', m
     const description = String(c.description || '');
 
     const haystackNorm = normalizeSlugOrName(`${name} ${slug} ${description}`);
+    const hayTokens = new Set(meaningfulTokens(haystackNorm));
 
     let score = 0;
 
@@ -256,11 +274,15 @@ function pickBestCategoryFromExisting({ categories, keywords = [], title = '', m
       const phraseNorm = normalizeSlugOrName(phrase);
       if (!phraseNorm) continue;
 
-      if (haystackNorm.includes(phraseNorm)) score += 12;
+      if (haystackNorm.includes(phraseNorm)) score += 8;
+    }
+
+    // Topic should dominate category choice so it doesn't always stick to a broad category.
+    for (const t of topicTokens) {
+      if (hayTokens.has(t)) score += 6;
     }
 
     // Token overlap (e.g., "seo", "marketing")
-    const hayTokens = new Set(tokenize(haystackNorm));
     let overlap = 0;
     for (const t of allTokens) {
       if (hayTokens.has(t)) overlap++;
@@ -273,9 +295,14 @@ function pickBestCategoryFromExisting({ categories, keywords = [], title = '', m
     }
   }
 
-  // Require at least some relevance; otherwise fallback to Uncategorized.
+  // Require at least some relevance; otherwise fallback to first non-uncategorized if available.
   if (best && bestScore > 0) return best;
-  return uncategorized || categories[0] || null;
+  const firstNonUncategorized = categories.find(c => {
+    const slug = String(c.slug || '').toLowerCase();
+    const name = String(c.name || '').toLowerCase();
+    return slug !== 'uncategorized' && name !== 'uncategorized';
+  });
+  return firstNonUncategorized || uncategorized || categories[0] || null;
 }
 
 export async function postToWordPress(wpUrl, wpUser, wpPass, title, content, metaDescription = '', seoData = {}) {
@@ -308,7 +335,8 @@ export async function postToWordPress(wpUrl, wpUser, wpPass, title, content, met
         categories,
         keywords,
         title,
-        metaDescription
+        metaDescription,
+        topic: seoData.topic || ''
       });
 
       if (bestCategory?.id) {

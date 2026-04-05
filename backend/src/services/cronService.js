@@ -185,7 +185,8 @@ async function runAutoPost() {
     const seoData = {
       seoScore: postContent.seoScore || 0,
       keywords: mergedKeywords,
-      slug: postContent.slug || undefined
+      slug: postContent.slug || undefined,
+      topic
     };
 
     const result = await postToWordPress(
@@ -356,7 +357,8 @@ export async function runPostNow(userId) {
     const seoData = {
       seoScore: postContent.seoScore || 0,
       keywords: mergedKeywords,
-      slug: postContent.slug || undefined
+      slug: postContent.slug || undefined,
+      topic
     };
 
     const result = await postToWordPress(
