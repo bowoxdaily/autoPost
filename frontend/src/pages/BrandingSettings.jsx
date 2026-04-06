@@ -96,6 +96,11 @@ export default function BrandingSettings() {
 
       if (updatedBranding) {
         setBranding(updatedBranding);
+        window.dispatchEvent(new CustomEvent('branding-updated', { detail: updatedBranding }));
+      }
+
+      if (logo_url) {
+        window.dispatchEvent(new CustomEvent('branding-updated', { detail: { logo_url } }));
       }
 
       setSuccess('Logo uploaded successfully!');
@@ -118,6 +123,7 @@ export default function BrandingSettings() {
       const response = await api.put('/branding', formData);
       setSuccess('Branding updated successfully!');
       setBranding(response.data.branding);
+      window.dispatchEvent(new CustomEvent('branding-updated', { detail: response.data.branding }));
       setTimeout(() => setSuccess(''), 3000);
     } catch (err) {
       setError(err.response?.data?.error || 'Failed to save branding');

@@ -30,22 +30,29 @@ export default function DashboardLayout() {
     }
   }, []);
 
-  // Fetch branding on mount
-  useEffect(() => {
-    const fetchBranding = async () => {
-      try {
-        const response = await api.get('/branding/public');
-        if (response.data && response.data.branding) {
-          setBranding(response.data.branding);
-        }
-      } catch (error) {
-        console.error('Failed to fetch branding:', error);
-      } finally {
-        setLoading(false);
+  const fetchBranding = async () => {
+    try {
+      const response = await api.get('/branding/public');
+      if (response.data && response.data.branding) {
+        setBranding(response.data.branding);
       }
-    };
-    
+    } catch (error) {
+      console.error('Failed to fetch branding:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Fetch branding on mount and when branding changes elsewhere in the app
+  useEffect(() => {
     fetchBranding();
+
+    const handleBrandingUpdated = () => {
+      fetchBranding();
+    };
+
+    window.addEventListener('branding-updated', handleBrandingUpdated);
+    return () => window.removeEventListener('branding-updated', handleBrandingUpdated);
   }, []);
 
   // Close dropdown when clicking outside
