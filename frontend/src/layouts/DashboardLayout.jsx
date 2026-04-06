@@ -20,8 +20,27 @@ export default function DashboardLayout() {
   const [user, setUser] = useState(null);
   const [branding, setBranding] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [isMobile, setIsMobile] = useState(false);
   const navigate = useNavigate();
   const location = useLocation(); // Get current location
+
+  useEffect(() => {
+    const updateViewport = () => {
+      const mobile = window.innerWidth <= 1024;
+      setIsMobile(mobile);
+      setSidebarOpen(!mobile);
+    };
+
+    updateViewport();
+    window.addEventListener('resize', updateViewport);
+    return () => window.removeEventListener('resize', updateViewport);
+  }, []);
+
+  useEffect(() => {
+    if (isMobile) {
+      setSidebarOpen(false);
+    }
+  }, [location.pathname, isMobile]);
 
   useEffect(() => {
     const userData = localStorage.getItem('user');
@@ -120,10 +139,14 @@ export default function DashboardLayout() {
     };
   }, [branding]);
 
+  const toggleSidebar = () => setSidebarOpen(prev => !prev);
+
   return (
     <div className="flex h-screen bg-main-bg modern-layout" style={themeVars}>
+      {isMobile && sidebarOpen && <div className="sidebar-overlay" onClick={() => setSidebarOpen(false)} />}
+
       {/* Sidebar */}
-      <aside className={`${sidebarOpen ? 'w-64' : 'w-20'} sidebar flex flex-col`}>
+      <aside className={`${sidebarOpen ? 'w-64' : 'w-20'} sidebar ${isMobile ? 'sidebar-mobile' : ''} ${isMobile && sidebarOpen ? 'sidebar-mobile-open' : ''} ${isMobile && !sidebarOpen ? 'sidebar-mobile-closed' : ''} flex flex-col`}>
         <div className="sidebar-header flex items-center justify-between p-4">
           {sidebarOpen && (
             <Link to="/dashboard" className="sidebar-logo-link flex items-center gap-3 min-w-0">
@@ -138,7 +161,7 @@ export default function DashboardLayout() {
             </Link>
           )}
           <button
-            onClick={() => setSidebarOpen(!sidebarOpen)}
+            onClick={toggleSidebar}
             className="hover:bg-sidebar-hover-bg p-2 rounded flex-shrink-0"
           >
             {sidebarOpen ? <X size={20} /> : <Menu size={20} />}
@@ -150,6 +173,7 @@ export default function DashboardLayout() {
             <Link
               key={item.path}
               to={item.path}
+              onClick={() => isMobile && setSidebarOpen(false)}
               className={`nav-link ${location.pathname.startsWith(item.path) ? 'active' : ''}`}
             >
               <item.icon size={20} />
@@ -176,6 +200,15 @@ export default function DashboardLayout() {
       <div className="flex-1 flex flex-col overflow-hidden">
         <header className="main-header px-6 flex items-center justify-between">
           <div className="breadcrumbs text-lg font-semibold text-header-text">
+            {isMobile && (
+              <button
+                onClick={toggleSidebar}
+                className="mobile-menu-toggle mr-3"
+                aria-label="Toggle sidebar"
+              >
+                <Menu size={18} />
+              </button>
+            )}
             <span>Dashboard</span> / <span className="breadcrumbs-current">{getPageTitle()}</span>
           </div>
           

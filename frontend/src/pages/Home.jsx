@@ -160,21 +160,21 @@ export default function Home() {
   };
 
   return (
-    <div className="dashboard-modern space-y-8">
+    <div className="dashboard-modern space-y-6 md:space-y-8">
       {/* Header */}
       <div>
-        <h1 className="text-3xl font-bold dashboard-header">Dashboard</h1>
+        <h1 className="text-2xl md:text-3xl font-bold dashboard-header">Dashboard</h1>
         <p className="text-gray-500 mt-1">Welcome back! Here's your AutoPost summary.</p>
       </div>
 
       {/* Messages */}
       {message && (
-        <div className={`p-4 rounded-lg text-sm font-medium flex items-center justify-between ${message.includes('Error') ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'}`}>
+        <div className={`p-4 rounded-lg text-sm font-medium flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-0 sm:justify-between ${message.includes('Error') ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800'}`}>
           <span>{message}</span>
           {message.includes('Network') && (
             <button
               onClick={testConnection}
-              className="ml-4 px-3 py-1 bg-white rounded text-xs font-bold hover:bg-gray-100"
+              className="sm:ml-4 px-3 py-1 bg-white rounded text-xs font-bold hover:bg-gray-100"
             >
               Test Connection
             </button>
@@ -271,14 +271,14 @@ export default function Home() {
             </div>
             
             <div className="space-y-2 text-xs text-gray-600">
-              <div className="flex justify-between items-center">
+              <div className="flex justify-between items-start sm:items-center gap-3">
                 <span>📅 Posting Interval:</span>
                 <strong className="text-gray-900">{cronStatus?.interval || 12} hours</strong>
               </div>
               {cronStatus?.active && cronStatus?.nextRun && (
-                <div className="flex justify-between items-center bg-green-50 p-2 rounded">
+                <div className="flex justify-between items-start sm:items-center gap-3 bg-green-50 p-2 rounded">
                   <span>⏰ Next Post:</span>
-                  <strong className="text-green-700">{new Date(cronStatus.nextRun).toLocaleString()}</strong>
+                  <strong className="text-green-700 text-right">{new Date(cronStatus.nextRun).toLocaleString()}</strong>
                 </div>
               )}
               {cronStatus?.active && (
