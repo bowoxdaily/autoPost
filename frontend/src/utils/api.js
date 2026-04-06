@@ -63,4 +63,9 @@ export const logsAPI = {
   clear: () => api.delete('/logs')
 };
 
+export const profileAPI = {
+  get: () => api.get('/auth/profile'),
+  update: (data) => api.put('/auth/profile', data)
+};
+
 export default api;

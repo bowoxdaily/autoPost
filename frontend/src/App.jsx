@@ -5,6 +5,7 @@ import Settings from './pages/Settings';
 import UserCredentials from './pages/UserCredentials';
 import Logs from './pages/Logs';
 import AdminPanel from './pages/AdminPanel';
+import Profile from './pages/Profile';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import ProtectedRoute from './components/ProtectedRoute';
@@ -29,6 +30,7 @@ export default function App() {
           <Route path="/settings" element={<Settings />} />
           <Route path="/credentials" element={<UserCredentials />} />
           <Route path="/logs" element={<Logs />} />
+          <Route path="/profile" element={<Profile />} />
           <Route path="/admin" element={<AdminPanel />} />
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
         </Route>
