@@ -2,7 +2,7 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
 :root {
-  --sidebar-bg: #111827; /* Darker Gray */
+  --sidebar-bg: linear-gradient(180deg, #111827 0%, #1f2937 100%);
   --sidebar-text: #d1d5db;
   --sidebar-hover-bg: #1f2937;
   --sidebar-active-bg: linear-gradient(90deg, rgba(99, 102, 241, 0.5), rgba(99, 102, 241, 0));
@@ -10,6 +10,10 @@
   --sidebar-active-border: #6366f1; /* Indigo */
   --main-bg: #f9fafb;
   --header-text: #111827;
+  --brand-dot: #6366f1;
+  --brand-current-page: #6366f1;
+  --profile-avatar-bg: #e5e7eb;
+  --profile-avatar-text: #4b5563;
 }
 
 .modern-layout {
@@ -18,7 +22,7 @@
 
 /* --- Sidebar --- */
 .sidebar {
-  background-color: var(--sidebar-bg);
+  background: var(--sidebar-bg);
   transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   color: var(--sidebar-text);
 }
@@ -107,12 +111,20 @@
   width: 36px;
   height: 36px;
   border-radius: 50%;
-  background-color: #e5e7eb;
-  color: #4b5563;
+  background-color: var(--profile-avatar-bg);
+  color: var(--profile-avatar-text);
   font-weight: 600;
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+.brand-dot {
+  background-color: var(--brand-dot);
+}
+
+.breadcrumbs-current {
+  color: var(--brand-current-page);
 }
 
 .profile-dropdown {

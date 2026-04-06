@@ -1,8 +1,18 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Link, Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { Menu, X, Home, Settings, FileText, LogOut, ChevronDown, Bell, User, Shield, Lock } from 'lucide-react';
 import api from '../utils/api';
 import '../styles/ModernLayout.css'; // Import modern layout styles
+
+function hexToRgba(hex, alpha = 1) {
+  const safeHex = String(hex || '').replace('#', '').trim();
+  if (!/^[0-9a-fA-F]{6}$/.test(safeHex)) return `rgba(102, 126, 234, ${alpha})`;
+
+  const r = parseInt(safeHex.slice(0, 2), 16);
+  const g = parseInt(safeHex.slice(2, 4), 16);
+  const b = parseInt(safeHex.slice(4, 6), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
 
 export default function DashboardLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -81,8 +91,28 @@ export default function DashboardLayout() {
     return activeItem ? activeItem.label : 'Dashboard';
   };
 
+  const themeVars = useMemo(() => {
+    const primary = branding?.primary_color || '#667eea';
+    const secondary = branding?.secondary_color || '#764ba2';
+    const accent = branding?.accent_color || '#f093fb';
+
+    return {
+      '--brand-primary': primary,
+      '--brand-secondary': secondary,
+      '--brand-accent': accent,
+      '--sidebar-bg': `linear-gradient(180deg, ${primary} 0%, ${secondary} 100%)`,
+      '--sidebar-hover-bg': hexToRgba(primary, 0.25),
+      '--sidebar-active-bg': `linear-gradient(90deg, ${hexToRgba(accent, 0.42)}, ${hexToRgba(primary, 0.08)})`,
+      '--sidebar-active-border': accent,
+      '--brand-dot': accent,
+      '--brand-current-page': primary,
+      '--profile-avatar-bg': hexToRgba(accent, 0.2),
+      '--profile-avatar-text': secondary
+    };
+  }, [branding]);
+
   return (
-    <div className="flex h-screen bg-main-bg modern-layout">
+    <div className="flex h-screen bg-main-bg modern-layout" style={themeVars}>
       {/* Sidebar */}
       <aside className={`${sidebarOpen ? 'w-64' : 'w-20'} sidebar flex flex-col`}>
         <div className="sidebar-header flex items-center justify-between p-4">
@@ -137,7 +167,7 @@ export default function DashboardLayout() {
       <div className="flex-1 flex flex-col overflow-hidden">
         <header className="main-header px-6 flex items-center justify-between">
           <div className="breadcrumbs text-lg font-semibold text-header-text">
-            <span>Dashboard</span> / <span className="text-indigo-600">{getPageTitle()}</span>
+            <span>Dashboard</span> / <span className="breadcrumbs-current">{getPageTitle()}</span>
           </div>
           
           {/* Header Right Section */}
@@ -145,7 +175,7 @@ export default function DashboardLayout() {
             {/* Notifications Bell */}
             <button className="relative p-2 text-gray-500 hover:bg-gray-100 rounded-full transition">
               <Bell size={22} />
-              <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-indigo-500 rounded-full border-2 border-white"></span>
+              <span className="absolute top-1.5 right-1.5 w-2 h-2 brand-dot rounded-full border-2 border-white"></span>
             </button>
 
             {/* User Profile Dropdown */}
