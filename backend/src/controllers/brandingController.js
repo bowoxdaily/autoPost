@@ -3,13 +3,35 @@ import { supabaseAdmin } from '../utils/supabase.js';
 // GET: Get current branding config (for public use)
 export async function getPublicBranding(req, res) {
   try {
-    const { data: branding, error } = await supabaseAdmin
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+
+    const { data: activeBrandings, error: activeError } = await supabaseAdmin
       .from('branding')
       .select('company_name, logo_url, favicon_url, primary_color, secondary_color, accent_color, website_url, support_email, social_twitter, social_linkedin, social_facebook')
       .eq('is_active', true)
-      .single();
+      .order('updated_at', { ascending: false })
+      .limit(1);
 
-    if (error || !branding) {
+    const activeBranding = Array.isArray(activeBrandings) ? activeBrandings[0] : null;
+
+    if (activeBranding) {
+      return res.status(200).json({
+        success: true,
+        branding: activeBranding
+      });
+    }
+
+    const { data: latestBrandings, error: latestError } = await supabaseAdmin
+      .from('branding')
+      .select('company_name, logo_url, favicon_url, primary_color, secondary_color, accent_color, website_url, support_email, social_twitter, social_linkedin, social_facebook')
+      .order('updated_at', { ascending: false })
+      .limit(1);
+
+    const latestBranding = Array.isArray(latestBrandings) ? latestBrandings[0] : null;
+
+    if (activeError || latestError || !latestBranding) {
       // Return default branding if not found
       return res.status(200).json({
         success: true,
@@ -31,7 +53,7 @@ export async function getPublicBranding(req, res) {
 
     return res.status(200).json({
       success: true,
-      branding
+      branding: latestBranding
     });
   } catch (error) {
     console.error('Get public branding error:', error);
@@ -119,7 +141,7 @@ export async function updateBranding(req, res) {
     }
 
     // Build update object
-    const updateData = {};
+    const updateData = { is_active: true };
     if (company_name !== undefined) updateData.company_name = company_name;
     if (logo_url !== undefined) updateData.logo_url = logo_url;
     if (favicon_url !== undefined) updateData.favicon_url = favicon_url;
@@ -147,7 +169,7 @@ export async function updateBranding(req, res) {
       // Create new branding
       const { data, error } = await supabaseAdmin
         .from('branding')
-        .insert([{ user_id: req.user.userId, ...updateData }])
+        .insert([{ user_id: req.user.userId, is_active: true, ...updateData }])
         .select()
         .single();
 
@@ -311,18 +333,33 @@ export async function uploadLogo(req, res) {
     // Update branding with new logo URL
     const { data: brandingData, error: brandingError } = await supabaseAdmin
       .from('branding')
-      .update({ logo_url: publicUrl, updated_at: new Date().toISOString() })
+      .update({ logo_url: publicUrl, is_active: true, updated_at: new Date().toISOString() })
       .eq('user_id', req.user.userId)
       .select()
       .single();
 
     if (brandingError) {
       console.error('Branding update error:', brandingError);
-      // Logo uploaded but branding not updated, still return success with URL
+      // Logo uploaded but branding not updated, try to create a branding row so it can be used publicly
+      const { data: createdBranding, error: createError } = await supabaseAdmin
+        .from('branding')
+        .insert([{ user_id: req.user.userId, logo_url: publicUrl, is_active: true, updated_at: new Date().toISOString() }])
+        .select()
+        .single();
+
+      if (createError) {
+        return res.status(200).json({
+          success: true,
+          message: 'Logo uploaded successfully',
+          logo_url: publicUrl
+        });
+      }
+
       return res.status(200).json({
         success: true,
         message: 'Logo uploaded successfully',
-        logo_url: publicUrl
+        logo_url: publicUrl,
+        branding: createdBranding
       });
     }
 

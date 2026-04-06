@@ -32,7 +32,9 @@ export default function DashboardLayout() {
 
   const fetchBranding = async () => {
     try {
-      const response = await api.get('/branding/public');
+      const response = await api.get('/branding/public', {
+        params: { t: Date.now() }
+      });
       if (response.data && response.data.branding) {
         setBranding(response.data.branding);
       }

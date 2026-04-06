@@ -32,7 +32,9 @@ export default function BrandingSettings() {
 
   async function fetchBranding() {
     try {
-      const response = await api.get('/branding');
+      const response = await api.get('/branding', {
+        params: { t: Date.now() }
+      });
       const data = response.data.branding;
       setBranding(data);
       setFormData({
