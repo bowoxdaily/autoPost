@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../utils/api';
+import { notifySuccess, notifyError, getApiErrorMessage } from '../utils/notify';
 import BrandingSettings from './BrandingSettings';
 import '../styles/AdminPanel.css';
 
@@ -163,18 +164,20 @@ function UsersList() {
   async function updateUserRole(userId, newRole) {
     try {
       await api.put(`/users/${userId}/role`, { role: newRole });
+      notifySuccess('User role updated successfully.');
       fetchUsers();
     } catch (error) {
-      alert('Error updating role: ' + error.response?.data?.error);
+      notifyError(getApiErrorMessage(error, 'Error updating role'));
     }
   }
 
   async function updateSubscription(userId, plan) {
     try {
       await api.put(`/users/${userId}/subscription`, { subscription_plan: plan });
+      notifySuccess('User subscription updated successfully.');
       fetchUsers();
     } catch (error) {
-      alert('Error updating subscription: ' + error.response?.data?.error);
+      notifyError(getApiErrorMessage(error, 'Error updating subscription'));
     }
   }
 

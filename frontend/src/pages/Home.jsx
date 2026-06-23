@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Play, Pause, RotateCw, BarChart2, CheckCircle, XCircle, Power } from 'lucide-react';
 import { cronAPI, logsAPI } from '../utils/api';
+import { notifySuccess, notifyError, getApiErrorMessage } from '../utils/notify';
 import '../styles/ModernDashboard.css';
 
 export default function Home() {
@@ -66,11 +67,13 @@ export default function Home() {
         const stopResponse = await cronAPI.stop();
         console.log('✅ Stop response:', stopResponse.data);
         setMessage('✓ Automation has been paused.');
+        notifySuccess('Automation paused.');
       } else {
         console.log('📤 Sending START request to backend...');
         const startResponse = await cronAPI.start();
         console.log('✅ Start response:', startResponse.data);
         setMessage('✓ Automation has been started.');
+        notifySuccess('Automation started.');
       }
       
       // Verify status from server after a longer delay to avoid race conditions
@@ -94,6 +97,7 @@ export default function Home() {
       setCronStatus(prev => ({ ...prev, active: previousState }));
       const errorMsg = error.response?.data?.error || error.message;
       setMessage(`✗ Error: ${errorMsg}`);
+      notifyError(getApiErrorMessage(error, 'Failed to update automation status'));
       console.error('Toggle cron error details:', { 
         status: error.response?.status,
         data: error.response?.data,
@@ -112,6 +116,7 @@ export default function Home() {
       const response = await cronAPI.runNow();
       console.log('✅ Success:', response.data);
       setMessage('✓ New post created and published successfully!');
+      notifySuccess('Post created and published successfully.');
       setTimeout(() => fetchStats(), 2000);
       setTimeout(() => setMessage(''), 3000);
     } catch (error) {
@@ -135,6 +140,7 @@ export default function Home() {
       } else {
         setMessage(`✗ Error: ${errorMsg}`);
       }
+      notifyError(getApiErrorMessage(error, 'Failed to create post'));
     } finally {
       setLoading(false);
     }
@@ -148,13 +154,16 @@ export default function Home() {
         const data = await response.json();
         console.log('✅ Backend connected:', data);
         setMessage('✓ Backend connection successful!');
+        notifySuccess('Backend connection successful.');
       } else {
         setMessage(`✗ Backend error: ${response.statusText}`);
+        notifyError(`Backend error: ${response.statusText}`);
       }
       setTimeout(() => setMessage(''), 3000);
     } catch (error) {
       console.error('❌ Connection test failed:', error);
       setMessage(`✗ Cannot connect to backend. Error: ${error.message}`);
+      notifyError(`Cannot connect to backend: ${error.message}`);
       setTimeout(() => setMessage(''), 3000);
     }
   };

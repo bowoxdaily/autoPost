@@ -1,4 +1,5 @@
 import { generatePostContent as generateWithGemini } from './geminiService.js';
+import { generatePostContent as generateWithSumopod } from './sumopodService.js';
 
 // Placeholder untuk ChatGPT
 async function generateWithChatGPT(apiKey, topic, language = 'id', refinementHint = '') {
@@ -23,7 +24,7 @@ async function generateWithClaude(apiKey, topic, language = 'id', refinementHint
 
 /**
  * Generate post content using selected AI provider
- * @param {string} provider - AI provider: 'gemini', 'chatgpt', 'claude'
+ * @param {string} provider - AI provider: 'gemini', 'sumopod', 'chatgpt', 'claude'
  * @param {string} apiKey - API key for the provider
  * @param {string} topic - Topic for the post
  * @param {string} language - Language: 'id' or 'en'
@@ -36,6 +37,9 @@ export async function generatePostContent(provider, apiKey, topic, language = 'i
   switch (provider?.toLowerCase()) {
     case 'gemini':
       return await generateWithGemini(apiKey, topic, language, refinementHint);
+
+    case 'sumopod':
+      return await generateWithSumopod(apiKey, topic, language, refinementHint);
     
     case 'chatgpt':
       return await generateWithChatGPT(apiKey, topic, language, refinementHint);
@@ -44,7 +48,7 @@ export async function generatePostContent(provider, apiKey, topic, language = 'i
       return await generateWithClaude(apiKey, topic, language, refinementHint);
     
     default:
-      throw new Error(`Unknown AI provider: ${provider}. Supported: gemini, chatgpt, claude`);
+      throw new Error(`Unknown AI provider: ${provider}. Supported: gemini, sumopod, chatgpt, claude`);
   }
 }
 
@@ -61,6 +65,15 @@ export function getAvailableProviders() {
       getKeyUrl: 'https://aistudio.google.com/app/apikey',
       keyFormat: 'AIza...',
       docs: 'https://ai.google.dev'
+    },
+    {
+      id: 'sumopod',
+      name: 'Sumopod AI',
+      description: 'OpenAI-compatible generation endpoint via Sumopod',
+      status: 'available',
+      getKeyUrl: 'https://sumopod.com',
+      keyFormat: 'sumopod key',
+      docs: 'https://sumopod.com'
     },
     {
       id: 'chatgpt',
@@ -96,6 +109,11 @@ export function validateProviderKey(provider, apiKey) {
       minLength: 20,
       pattern: /^AIza[a-zA-Z0-9_-]{67,}$/,
       message: 'Invalid Gemini API key format. Should start with AIza'
+    },
+    sumopod: {
+      minLength: 20,
+      pattern: /^.{20,}$/,
+      message: 'Invalid Sumopod API key format. Please check your key.'
     },
     chatgpt: {
       minLength: 20,

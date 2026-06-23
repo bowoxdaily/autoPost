@@ -10,6 +10,14 @@ import { getTrendingTopic, getTrendingKeywords } from './trendingService.js';
 let cronJob = null;
 let currentUserId = null;
 
+function getProviderApiKey(credentials) {
+  return credentials.aiProvider === 'gemini' ? credentials.geminiKey :
+    credentials.aiProvider === 'sumopod' ? credentials.sumopodKey :
+    credentials.aiProvider === 'chatgpt' ? credentials.chatgptKey :
+    credentials.aiProvider === 'claude' ? credentials.claudeKey :
+    null;
+}
+
 function mergeSeoKeywords(aiKeywords = [], trendingKeywords = [], topic = '') {
   return [...new Set(
     [
@@ -169,9 +177,7 @@ async function runAutoPost() {
     
     const postContent = await generateSeoPostWithGuardrails({
       provider: credentials.aiProvider,
-      apiKey: credentials.aiProvider === 'gemini' ? credentials.geminiKey : 
-              credentials.aiProvider === 'chatgpt' ? credentials.chatgptKey :
-              credentials.aiProvider === 'claude' ? credentials.claudeKey : null,
+      apiKey: getProviderApiKey(credentials),
       topic,
       contentLanguage
     });
@@ -341,9 +347,7 @@ export async function runPostNow(userId) {
     
     const postContent = await generateSeoPostWithGuardrails({
       provider: credentials.aiProvider,
-      apiKey: credentials.aiProvider === 'gemini' ? credentials.geminiKey : 
-              credentials.aiProvider === 'chatgpt' ? credentials.chatgptKey :
-              credentials.aiProvider === 'claude' ? credentials.claudeKey : null,
+      apiKey: getProviderApiKey(credentials),
       topic,
       contentLanguage
     });

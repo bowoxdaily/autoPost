@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import api from '../utils/api';
+import { notifySuccess, notifyError, getApiErrorMessage } from '../utils/notify';
 import '../styles/BrandingSettings.css';
 
 export default function BrandingSettings() {
@@ -56,6 +57,7 @@ export default function BrandingSettings() {
     } catch (err) {
       console.error('Error fetching branding:', err);
       setError('Failed to load branding settings');
+      notifyError(getApiErrorMessage(err, 'Failed to load branding settings'));
       setLoading(false);
     }
   }
@@ -106,9 +108,12 @@ export default function BrandingSettings() {
       }
 
       setSuccess('Logo uploaded successfully!');
+      notifySuccess('Logo uploaded successfully.');
       setTimeout(() => setSuccess(''), 3000);
     } catch (err) {
-      setError(err.response?.data?.error || 'Failed to upload logo');
+      const message = getApiErrorMessage(err, 'Failed to upload logo');
+      setError(message);
+      notifyError(message);
     } finally {
       setUploading(false);
       // Reset file input
@@ -124,11 +129,14 @@ export default function BrandingSettings() {
     try {
       const response = await api.put('/branding', formData);
       setSuccess('Branding updated successfully!');
+      notifySuccess('Branding updated successfully.');
       setBranding(response.data.branding);
       window.dispatchEvent(new CustomEvent('branding-updated', { detail: response.data.branding }));
       setTimeout(() => setSuccess(''), 3000);
     } catch (err) {
-      setError(err.response?.data?.error || 'Failed to save branding');
+      const message = getApiErrorMessage(err, 'Failed to save branding');
+      setError(message);
+      notifyError(message);
     } finally {
       setSaving(false);
     }

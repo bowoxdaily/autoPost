@@ -1,4 +1,5 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { Toaster } from 'react-hot-toast';
 import DashboardLayout from './layouts/DashboardLayout';
 import Home from './pages/Home';
 import Settings from './pages/Settings';
@@ -13,6 +14,30 @@ import ProtectedRoute from './components/ProtectedRoute';
 export default function App() {
   return (
     <BrowserRouter>
+      <Toaster
+        position="top-right"
+        toastOptions={{
+          duration: 3500,
+          style: {
+            borderRadius: '10px',
+            fontSize: '14px'
+          },
+          success: {
+            style: {
+              background: '#ecfdf3',
+              color: '#065f46',
+              border: '1px solid #a7f3d0'
+            }
+          },
+          error: {
+            style: {
+              background: '#fef2f2',
+              color: '#991b1b',
+              border: '1px solid #fecaca'
+            }
+          }
+        }}
+      />
       <Routes>
         {/* Auth routes */}
         <Route path="/login" element={<Login />} />

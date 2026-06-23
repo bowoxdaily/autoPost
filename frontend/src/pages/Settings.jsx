@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Save, AlertCircle, CheckCircle, Settings as SettingsIcon } from 'lucide-react';
 import { settingsAPI } from '../utils/api';
+import { notifySuccess, notifyError, getApiErrorMessage } from '../utils/notify';
 
 export default function Settings() {
   const [intervalWaktu, setIntervalWaktu] = useState(12);
@@ -21,6 +22,7 @@ export default function Settings() {
       console.error('Failed to fetch settings:', error);
       setMessage('Failed to load settings');
       setMessageType('error');
+      notifyError(getApiErrorMessage(error, 'Failed to load settings'));
     } finally {
       setLoading(false);
     }
@@ -35,10 +37,12 @@ export default function Settings() {
       await settingsAPI.update({ intervalWaktu });
       setMessage('✓ Scheduling interval updated successfully!');
       setMessageType('success');
+      notifySuccess('Scheduling interval updated successfully.');
       setTimeout(() => setMessage(''), 3000);
     } catch (error) {
       setMessage(error.response?.data?.error || 'Failed to save settings');
       setMessageType('error');
+      notifyError(getApiErrorMessage(error, 'Failed to save settings'));
     } finally {
       setSaving(false);
     }

@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { notifyError, getApiErrorMessage } from './notify';
 
 const configuredApiUrl = (import.meta.env.VITE_API_URL || '').trim().replace(/\/$/, '');
 const apiHost = configuredApiUrl.replace(/\/api$/, '');
@@ -34,6 +35,11 @@ api.interceptors.response.use(
       localStorage.removeItem('authToken');
       localStorage.removeItem('user');
       window.location.href = '/login';
+    }
+
+    if (!error.config?.skipToast) {
+      const message = getApiErrorMessage(error, 'Request failed');
+      notifyError(message);
     }
     
     // Improve error message for network issues

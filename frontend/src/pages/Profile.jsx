@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { User, Mail, Shield, Calendar, Save } from 'lucide-react';
 import { profileAPI } from '../utils/api';
+import { notifySuccess, notifyError, getApiErrorMessage } from '../utils/notify';
 
 export default function Profile() {
   const [profile, setProfile] = useState(null);
@@ -27,6 +28,7 @@ export default function Profile() {
         avatar_url: user?.avatar_url || ''
       });
     } catch (error) {
+      notifyError(getApiErrorMessage(error, 'Failed to load profile'));
       setMessage({
         type: 'error',
         text: error.response?.data?.error || 'Failed to load profile'
@@ -72,7 +74,9 @@ export default function Profile() {
       }
 
       setMessage({ type: 'success', text: 'Profile updated successfully.' });
+      notifySuccess('Profile updated successfully.');
     } catch (error) {
+      notifyError(getApiErrorMessage(error, 'Failed to update profile'));
       setMessage({
         type: 'error',
         text: error.response?.data?.error || 'Failed to update profile'

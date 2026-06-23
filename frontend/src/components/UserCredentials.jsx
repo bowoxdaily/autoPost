@@ -1,12 +1,14 @@
 import { useState, useEffect } from 'react';
 import api from '../utils/api';
 import { Eye, EyeOff, Check, X, Loader } from 'lucide-react';
+import { notifySuccess, notifyError, getApiErrorMessage } from '../utils/notify';
 import '../styles/UserCredentials.css';
 
 export default function UserCredentials() {
   const [credentials, setCredentials] = useState({
     ai_provider: 'gemini',
     gemini_api_key: '',
+    sumopod_api_key: '',
     chatgpt_api_key: '',
     claude_api_key: '',
     wordpress_url: '',
@@ -20,6 +22,7 @@ export default function UserCredentials() {
 
   const [showPasswords, setShowPasswords] = useState({
     gemini_api_key: false,
+    sumopod_api_key: false,
     chatgpt_api_key: false,
     claude_api_key: false,
     wordpress_password: false
@@ -44,6 +47,7 @@ export default function UserCredentials() {
       }
     } catch (error) {
       console.error('Failed to fetch credentials:', error);
+      notifyError(getApiErrorMessage(error, 'Failed to fetch credentials'));
     } finally {
       setLoading(false);
     }
@@ -63,6 +67,7 @@ export default function UserCredentials() {
       // Validation
       const providerApiKey = 
         credentials.ai_provider === 'gemini' ? credentials.gemini_api_key :
+        credentials.ai_provider === 'sumopod' ? credentials.sumopod_api_key :
         credentials.ai_provider === 'chatgpt' ? credentials.chatgpt_api_key :
         credentials.ai_provider === 'claude' ? credentials.claude_api_key : null;
 
@@ -89,10 +94,12 @@ export default function UserCredentials() {
           type: 'success',
           text: '✓ Credentials saved successfully!'
         });
+        notifySuccess('Credentials saved successfully.');
         // Refresh to confirm
         setTimeout(() => fetchCredentials(), 1000);
       }
     } catch (error) {
+      notifyError(getApiErrorMessage(error, 'Failed to save credentials'));
       setMessage({
         type: 'error',
         text: error.response?.data?.error || 'Failed to save credentials'
@@ -112,8 +119,10 @@ export default function UserCredentials() {
           type: 'success',
           text: response.data.message
         });
+        notifySuccess(response.data.message || 'Verification successful.');
       }
     } catch (error) {
+      notifyError(getApiErrorMessage(error, `Failed to verify ${credentialType} credentials`));
       setMessage({
         type: 'error',
         text: error.response?.data?.error || `Failed to verify ${credentialType} credentials`
@@ -135,7 +144,7 @@ export default function UserCredentials() {
     <div className="user-credentials-container">
       <div className="credentials-header">
         <h2>Account Credentials</h2>
-        <p>Manage your Gemini API Key and WordPress credentials</p>
+        <p>Manage your AI provider API key and WordPress credentials</p>
       </div>
 
       {message.text && (
@@ -167,6 +176,7 @@ export default function UserCredentials() {
               className="input-field"
             >
               <option value="gemini">Google Gemini (Recommended)</option>
+              <option value="sumopod">Sumopod AI</option>
               <option value="chatgpt" disabled>OpenAI ChatGPT (Coming Soon)</option>
               <option value="claude" disabled>Anthropic Claude (Coming Soon)</option>
             </select>
@@ -174,6 +184,63 @@ export default function UserCredentials() {
               Your API keys are encrypted and stored securely.
             </p>
           </div>
+        </section>
+
+        <hr className="section-divider" />
+
+        {/* Sumopod API Key Section */}
+        <section className="credential-section">
+          <div className="section-header">
+            <div>
+              <h3>Sumopod API Key</h3>
+              <p className="section-description">
+                Enter your Sumopod API key for AI-powered content generation.
+              </p>
+            </div>
+          </div>
+
+          <div className="form-group">
+            <label htmlFor="sumopod_api_key">Sumopod API Key</label>
+            <div className="input-wrapper">
+              <input
+                id="sumopod_api_key"
+                type={showPasswords.sumopod_api_key ? 'text' : 'password'}
+                name="sumopod_api_key"
+                value={credentials.sumopod_api_key || ''}
+                onChange={handleInputChange}
+                placeholder="Paste your Sumopod key"
+                className="input-field"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPasswords(prev => ({
+                  ...prev,
+                  sumopod_api_key: !prev.sumopod_api_key
+                }))}
+                className="toggle-password-btn"
+              >
+                {showPasswords.sumopod_api_key ? <EyeOff size={18} /> : <Eye size={18} />}
+              </button>
+            </div>
+          </div>
+
+          <button
+            onClick={() => handleVerify('sumopod')}
+            disabled={!credentials.sumopod_api_key || verifying === 'sumopod'}
+            className="verify-btn"
+          >
+            {verifying === 'sumopod' ? (
+              <>
+                <Loader size={16} className="spin" />
+                Verifying...
+              </>
+            ) : (
+              <>
+                <Check size={16} />
+                Verify API Key
+              </>
+            )}
+          </button>
         </section>
 
         <hr className="section-divider" />

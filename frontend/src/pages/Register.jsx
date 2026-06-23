@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../utils/api';
+import { notifySuccess, notifyError, getApiErrorMessage } from '../utils/notify';
 
 export default function Register() {
   const [email, setEmail] = useState('');
@@ -27,9 +28,12 @@ export default function Register() {
       localStorage.setItem('user', JSON.stringify(data.user));
 
       // Redirect to dashboard
+      notifySuccess('Registration successful. Your account is ready.');
       navigate('/dashboard');
     } catch (err) {
-      setError(err.response?.data?.error || 'Registration failed');
+      const message = getApiErrorMessage(err, 'Registration failed');
+      setError(message);
+      notifyError(message);
     } finally {
       setLoading(false);
     }

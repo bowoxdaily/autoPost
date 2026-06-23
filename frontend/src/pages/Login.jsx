@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../utils/api';
+import { notifySuccess, notifyError, getApiErrorMessage } from '../utils/notify';
 
 export default function Login() {
   const [email, setEmail] = useState('');
@@ -26,12 +27,16 @@ export default function Login() {
 
       // Redirect based on role
       if (data.user.role === 'superuser') {
+        notifySuccess('Login successful. Welcome back!');
         navigate('/admin');
       } else {
+        notifySuccess('Login successful. Welcome back!');
         navigate('/dashboard');
       }
     } catch (err) {
-      setError(err.response?.data?.error || 'Login failed');
+      const message = getApiErrorMessage(err, 'Login failed');
+      setError(message);
+      notifyError(message);
     } finally {
       setLoading(false);
     }

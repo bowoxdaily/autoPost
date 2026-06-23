@@ -15,7 +15,7 @@ export async function getUserSettings(req, res) {
 
     const { data, error } = await supabaseAdmin
       .from('users')
-      .select('gemini_api_key, wordpress_url, wordpress_username, wordpress_password, content_language, trending_enabled, trending_niche, include_images')
+      .select('ai_provider, gemini_api_key, sumopod_api_key, chatgpt_api_key, claude_api_key, wordpress_url, wordpress_username, wordpress_password, content_language, trending_enabled, trending_niche, include_images')
       .eq('id', userId)
       .single();
 
@@ -30,7 +30,11 @@ export async function getUserSettings(req, res) {
 
     // Decrypt the credentials before sending
     const decryptedSettings = {
+      ai_provider: data.ai_provider || 'gemini',
       gemini_api_key: data.gemini_api_key ? decrypt(data.gemini_api_key) : '',
+      sumopod_api_key: data.sumopod_api_key ? decrypt(data.sumopod_api_key) : '',
+      chatgpt_api_key: data.chatgpt_api_key ? decrypt(data.chatgpt_api_key) : '',
+      claude_api_key: data.claude_api_key ? decrypt(data.claude_api_key) : '',
       wordpress_url: data.wordpress_url ? decrypt(data.wordpress_url) : '',
       wordpress_username: data.wordpress_username ? decrypt(data.wordpress_username) : '',
       wordpress_password: data.wordpress_password ? decrypt(data.wordpress_password) : '',
@@ -62,16 +66,39 @@ export async function updateUserSettings(req, res) {
       return res.status(401).json({ error: 'User not authenticated or ID missing' });
     }
 
-    const { gemini_api_key, wordpress_url, wordpress_username, wordpress_password, content_language, trending_enabled, trending_niche, include_images } = req.body;
+    const {
+      ai_provider,
+      gemini_api_key,
+      sumopod_api_key,
+      chatgpt_api_key,
+      claude_api_key,
+      wordpress_url,
+      wordpress_username,
+      wordpress_password,
+      content_language,
+      trending_enabled,
+      trending_niche,
+      include_images
+    } = req.body;
 
     // Validate input
     const noUsefulInput =
+      ai_provider === undefined &&
       gemini_api_key === undefined &&
+      sumopod_api_key === undefined &&
+      chatgpt_api_key === undefined &&
+      claude_api_key === undefined &&
       wordpress_url === undefined &&
       content_language === undefined &&
       trending_enabled === undefined &&
       trending_niche === undefined &&
       include_images === undefined;
+    if (ai_provider && !['gemini', 'sumopod', 'chatgpt', 'claude'].includes(ai_provider)) {
+      return res.status(400).json({
+        error: 'Invalid ai_provider. Allowed values: gemini, sumopod, chatgpt, claude'
+      });
+    }
+
 
     if (noUsefulInput) {
       return res.status(400).json({ 
@@ -100,6 +127,18 @@ export async function updateUserSettings(req, res) {
     const encryptedSettings = {};
     if (gemini_api_key !== undefined) {
       encryptedSettings.gemini_api_key = gemini_api_key ? encrypt(gemini_api_key) : null;
+    }
+    if (sumopod_api_key !== undefined) {
+      encryptedSettings.sumopod_api_key = sumopod_api_key ? encrypt(sumopod_api_key) : null;
+    }
+    if (chatgpt_api_key !== undefined) {
+      encryptedSettings.chatgpt_api_key = chatgpt_api_key ? encrypt(chatgpt_api_key) : null;
+    }
+    if (claude_api_key !== undefined) {
+      encryptedSettings.claude_api_key = claude_api_key ? encrypt(claude_api_key) : null;
+    }
+    if (ai_provider !== undefined) {
+      encryptedSettings.ai_provider = ai_provider;
     }
     if (wordpress_url !== undefined) {
       encryptedSettings.wordpress_url = wordpress_url ? encrypt(wordpress_url) : null;
@@ -140,7 +179,11 @@ export async function updateUserSettings(req, res) {
       success: true,
       message: 'Settings updated successfully',
       settings: {
+        ai_provider: data.ai_provider || 'gemini',
         gemini_api_key: data.gemini_api_key ? '***' : '',
+        sumopod_api_key: data.sumopod_api_key ? '***' : '',
+        chatgpt_api_key: data.chatgpt_api_key ? '***' : '',
+        claude_api_key: data.claude_api_key ? '***' : '',
         wordpress_url: data.wordpress_url ? decrypt(data.wordpress_url) : '',
         wordpress_username: data.wordpress_username ? '***' : '',
         wordpress_password: data.wordpress_password ? '***' : '',
@@ -242,23 +285,46 @@ export async function verifyUserCredentials(req, res) {
 
     const { credentialType } = req.body;
 
-    if (credentialType === 'gemini') {
-      // Test Gemini API key
-      const apiKey = await getUserGeminiKey(userId);
+    if (credentialType === 'gemini' || credentialType === 'sumopod') {
+      const column = credentialType === 'gemini' ? 'gemini_api_key' : 'sumopod_api_key';
+      const { data, error } = await supabaseAdmin
+        .from('users')
+        .select(column)
+        .eq('id', userId)
+        .single();
+
+      if (error) {
+        return res.status(400).json({
+          success: false,
+          error: error.message
+        });
+      }
+
+      const encryptedKey = data?.[column];
+      const apiKey = encryptedKey ? decrypt(encryptedKey) : null;
+
       if (!apiKey) {
         return res.status(400).json({ 
           success: false, 
-          error: 'No Gemini API key found' 
+          error: `No ${credentialType} API key found`
         });
       }
-      // Simple validation - check if key format is correct
-      if (!apiKey.startsWith('AIza')) {
+
+      if (credentialType === 'gemini' && !apiKey.startsWith('AIza')) {
         return res.status(400).json({ 
           success: false, 
           error: 'Invalid Gemini API key format' 
         });
       }
-      res.json({ success: true, message: 'Gemini API key format is valid' });
+
+      if (credentialType === 'sumopod' && String(apiKey).trim().length < 20) {
+        return res.status(400).json({
+          success: false,
+          error: 'Invalid Sumopod API key format'
+        });
+      }
+
+      res.json({ success: true, message: `${credentialType} API key format is valid` });
     } else if (credentialType === 'wordpress') {
       // Test WordPress credentials
       const creds = await getUserWordPressCredentials(userId);

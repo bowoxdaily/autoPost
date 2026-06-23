@@ -14,7 +14,7 @@ export async function getUserCredentialsForPosting(userId) {
 
     const { data, error } = await supabaseAdmin
       .from('users')
-      .select('ai_provider, gemini_api_key, chatgpt_api_key, claude_api_key, wordpress_url, wordpress_username, wordpress_password, content_language, trending_enabled, trending_niche, include_images')
+      .select('ai_provider, gemini_api_key, sumopod_api_key, chatgpt_api_key, claude_api_key, wordpress_url, wordpress_username, wordpress_password, content_language, trending_enabled, trending_niche, include_images')
       .eq('id', userId)
       .single();
 
@@ -32,6 +32,7 @@ export async function getUserCredentialsForPosting(userId) {
     const decryptedCredentials = {
       aiProvider,
       geminiKey: data.gemini_api_key ? decrypt(data.gemini_api_key) : null,
+      sumopodKey: data.sumopod_api_key ? decrypt(data.sumopod_api_key) : null,
       chatgptKey: data.chatgpt_api_key ? decrypt(data.chatgpt_api_key) : null,
       claudeKey: data.claude_api_key ? decrypt(data.claude_api_key) : null,
       wpUrl: data.wordpress_url ? decrypt(data.wordpress_url) : null,
@@ -46,6 +47,7 @@ export async function getUserCredentialsForPosting(userId) {
     // Validate required credentials based on provider
     const providerApiKey = 
       aiProvider === 'gemini' ? decryptedCredentials.geminiKey :
+      aiProvider === 'sumopod' ? decryptedCredentials.sumopodKey :
       aiProvider === 'chatgpt' ? decryptedCredentials.chatgptKey :
       aiProvider === 'claude' ? decryptedCredentials.claudeKey :
       null;
@@ -93,6 +95,7 @@ export async function getAiProviderAndKey(userId) {
     
     const providerApiKey = 
       credentials.aiProvider === 'gemini' ? credentials.geminiKey :
+      credentials.aiProvider === 'sumopod' ? credentials.sumopodKey :
       credentials.aiProvider === 'chatgpt' ? credentials.chatgptKey :
       credentials.aiProvider === 'claude' ? credentials.claudeKey :
       null;

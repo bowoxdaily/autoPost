@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "start": "node src/bootstrap.js",
-    "dev": "nodemon src/bootstrap.js"
+    "dev": "nodemon --watch src --watch .env --ext js,mjs,cjs,json --ignore data/** src/bootstrap.js"
   },
   "dependencies": {
     "@google/generative-ai": "^0.3.0",

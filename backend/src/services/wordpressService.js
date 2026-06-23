@@ -369,16 +369,39 @@ export async function postToWordPress(wpUrl, wpUser, wpPass, title, content, met
       };
     }
 
-    const response = await axios.post(
-      url,
-      postData,
-      {
-        headers: {
-          'Authorization': `Basic ${auth}`,
-          'Content-Type': 'application/json'
+    let response;
+    try {
+      response = await axios.post(
+        url,
+        postData,
+        {
+          headers: {
+            'Authorization': `Basic ${auth}`,
+            'Content-Type': 'application/json'
+          }
         }
+      );
+    } catch (publishError) {
+      const wpCode = publishError?.response?.data?.code;
+      const status = publishError?.response?.status;
+
+      // If user cannot publish, fallback to draft so automation can keep working.
+      if (status === 403 && wpCode === 'rest_cannot_publish') {
+        console.warn('⚠️  [WordPress] Publish not allowed for this user, retrying as draft...');
+        response = await axios.post(
+          url,
+          { ...postData, status: 'draft' },
+          {
+            headers: {
+              'Authorization': `Basic ${auth}`,
+              'Content-Type': 'application/json'
+            }
+          }
+        );
+      } else {
+        throw publishError;
       }
-    );
+    }
 
     return {
       success: true,
@@ -389,7 +412,19 @@ export async function postToWordPress(wpUrl, wpUser, wpPass, title, content, met
       keywords: seoData.keywords || []
     };
   } catch (error) {
-    throw new Error(`Failed to post to WordPress: ${error.response?.data?.message || error.message}`);
+    const wpStatus = error?.response?.status;
+    const wpCode = error?.response?.data?.code;
+    const wpMessage = error?.response?.data?.message || error.message;
+
+    if (wpStatus === 403 && (wpCode === 'rest_cannot_create' || wpCode === 'rest_cannot_publish')) {
+      throw new Error(
+        `Failed to post to WordPress: ${wpMessage}. ` +
+        `Pastikan user WordPress punya role Author/Editor/Admin (bukan Subscriber), gunakan Application Password user yang sama, ` +
+        `dan endpoint REST /wp-json/wp/v2/posts tidak diblokir plugin security.`
+      );
+    }
+
+    throw new Error(`Failed to post to WordPress: ${wpMessage}`);
   }
 }
 
