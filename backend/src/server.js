@@ -6,6 +6,37 @@ import { initializeDatabase } from './utils/database.js';
 dotenv.config();
 
 const app = express();
+const defaultAllowedOrigins = [
+  process.env.FRONTEND_URL,
+  'http://localhost:3000',
+  'http://127.0.0.1:3000'
+].filter(Boolean);
+const allowedOrigins = (process.env.ALLOWED_ORIGINS || '')
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+const resolvedAllowedOrigins = [...new Set([...allowedOrigins, ...defaultAllowedOrigins])];
+
+const corsOptions = {
+  origin(origin, callback) {
+    // Allow requests without Origin header (curl, server-to-server, health checks).
+    if (!origin) {
+      callback(null, true);
+      return;
+    }
+
+    if (resolvedAllowedOrigins.includes(origin)) {
+      callback(null, true);
+      return;
+    }
+
+    callback(new Error(`CORS blocked for origin: ${origin}`));
+  },
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-API-Key'],
+  credentials: true,
+  optionsSuccessStatus: 200
+};
 const resolvedPort = Number(
   process.env.PORT ||
   process.env.APP_PORT ||
@@ -35,7 +66,8 @@ function lazyMiddleware(importer, exportName = 'default') {
   };
 }
 
-app.use(cors());
+app.use(cors(corsOptions));
+app.options('*', cors(corsOptions));
 app.use(express.json());
 
 // Initialize database
