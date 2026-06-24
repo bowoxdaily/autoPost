@@ -1,4 +1,70 @@
 import axios from 'axios';
+import {
+  getLanguageInstruction,
+  getFallbackTitle,
+  getTitleStyleRules,
+  getReadabilityRules
+} from './promptStyle.js';
+
+function getSumopodBaseUrl() {
+  return (process.env.SUMOPOD_BASE_URL || 'https://ai.sumopod.com/v1').replace(/\/$/, '');
+}
+
+function getPositiveNumberEnv(name, fallback) {
+  const raw = Number(process.env[name]);
+  return Number.isFinite(raw) && raw > 0 ? raw : fallback;
+}
+
+// Returns a positive number, 0 (meaning "no limit / omit"), or the fallback when unset.
+function getOptionalTokenEnv(name, fallback) {
+  const value = process.env[name];
+  if (value === undefined || String(value).trim() === '') {
+    return fallback;
+  }
+  const raw = Number(value);
+  if (!Number.isFinite(raw) || raw < 0) {
+    return fallback;
+  }
+  return raw; // 0 means omit max_tokens (let the model use its maximum)
+}
+
+function hasUnclosedJsonObject(input) {
+  const start = input.indexOf('{');
+  if (start === -1) return false;
+
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+
+  for (let index = start; index < input.length; index++) {
+    const ch = input[index];
+
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if (ch === '\\') {
+        escaped = true;
+        continue;
+      }
+      if (ch === '"') {
+        inString = false;
+      }
+      continue;
+    }
+
+    if (ch === '"') {
+      inString = true;
+      continue;
+    }
+
+    if (ch === '{') depth++;
+    if (ch === '}') depth--;
+  }
+
+  return depth > 0;
+}
 
 function slugify(value) {
   return String(value || '')
@@ -11,9 +77,7 @@ function slugify(value) {
 }
 
 function normalizeOutput(parsed, topic, language) {
-  const fallbackTitle = language === 'en'
-    ? `Best ${topic}: Complete Guide`
-    : `Panduan Lengkap ${topic} Terbaik`;
+  const fallbackTitle = getFallbackTitle(topic, language);
 
   const title = String(parsed?.title || fallbackTitle).trim();
   const slug = slugify(parsed?.slug || title || topic);
@@ -86,7 +150,261 @@ function extractFirstJsonObject(input) {
   return null;
 }
 
-export async function generatePostContent(apiKey, topic, language = 'id', refinementHint = '') {
+function normalizeModelText(content) {
+  if (typeof content === 'string') {
+    return content.trim();
+  }
+
+  if (Array.isArray(content)) {
+    return content
+      .map((item) => {
+        if (typeof item === 'string') return item;
+        if (typeof item?.text === 'string') return item.text;
+        if (typeof item?.content === 'string') return item.content;
+        return '';
+      })
+      .join('\n')
+      .trim();
+  }
+
+  if (typeof content?.text === 'string') {
+    return content.text.trim();
+  }
+
+  return '';
+}
+
+function recoverStructuredJson(jsonStr, topic) {
+  const grab = (key) => {
+    const match = jsonStr.match(new RegExp(`"${key}"\\s*:\\s*"([\\s\\S]*?)"\\s*(?:,|\\n|\\}|$)`));
+    return match?.[1];
+  };
+
+  const titleMatch = grab('title');
+  const slugMatch = grab('slug');
+  const descMatch = grab('metaDescription');
+  const imageMatch = grab('imagePrompt');
+  const scoreMatch = jsonStr.match(/"seoScore"\s*:\s*(\d+)/);
+  const keywordsMatch = jsonStr.match(/"keywords"\s*:\s*\[(.*?)\]/s);
+
+  // content can be very large and may be truncated (no closing quote)
+  let content = '';
+  const contentKey = '"content"';
+  const contentIndex = jsonStr.indexOf(contentKey);
+  if (contentIndex !== -1) {
+    const firstQuote = jsonStr.indexOf('"', contentIndex + contentKey.length);
+    if (firstQuote !== -1) {
+      let escaped = false;
+      let closed = false;
+      for (let index = firstQuote + 1; index < jsonStr.length; index++) {
+        const ch = jsonStr[index];
+        if (escaped) {
+          escaped = false;
+          continue;
+        }
+        if (ch === '\\') {
+          escaped = true;
+          continue;
+        }
+        if (ch === '"') {
+          content = jsonStr.slice(firstQuote + 1, index);
+          closed = true;
+          break;
+        }
+      }
+      if (!closed) {
+        // Truncated mid-content: keep whatever was produced.
+        content = jsonStr.slice(firstQuote + 1);
+      }
+    }
+  }
+
+  // Drop a trailing unfinished HTML tag from truncated content.
+  content = content
+    .replace(/\\n/g, '\n')
+    .replace(/\\t/g, '\t')
+    .replace(/\\"/g, '"')
+    .replace(/<[^>]*$/, '')
+    .trim();
+
+  const parsedKeywords = keywordsMatch
+    ? keywordsMatch[1]
+      .split(',')
+      .map((keyword) => keyword.replace(/^\s*"|"\s*$/g, '').trim())
+      .filter(Boolean)
+    : [topic];
+
+  return {
+    title: titleMatch?.replace(/\\"/g, '"') || `Cara Tepat Memahami ${topic}`,
+    slug: slugMatch?.replace(/\\"/g, '"') || slugify(topic),
+    metaDescription: descMatch?.replace(/\\"/g, '"') || '',
+    content,
+    imagePrompt: imageMatch?.replace(/\\"/g, '"') || undefined,
+    keywords: parsedKeywords,
+    seoScore: scoreMatch?.[1] ? Number(scoreMatch[1]) : 75
+  };
+}
+
+function hasUsableContent(parsed) {
+  const plain = String(parsed?.content || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+  return plain.length >= 200;
+}
+
+// Parses a model response and reports status instead of throwing, so callers can
+// decide whether to retry, salvage, or fail.
+function parseGeneratedPayload(rawContent, topic) {
+  const text = normalizeModelText(rawContent);
+  if (!text) {
+    return { ok: false, reason: 'empty', text: '' };
+  }
+
+  const jsonCandidate = extractFirstJsonObject(text);
+  if (!jsonCandidate) {
+    return {
+      ok: false,
+      reason: hasUnclosedJsonObject(text) ? 'truncated' : 'nojson',
+      text
+    };
+  }
+
+  const cleanJson = jsonCandidate
+    .replace(/```json\n?/gi, '')
+    .replace(/```\n?/g, '')
+    .trim();
+
+  try {
+    return { ok: true, value: JSON.parse(cleanJson), text };
+  } catch (parseError) {
+    return { ok: true, value: recoverStructuredJson(cleanJson, topic), text };
+  }
+}
+
+function buildMessages(prompt) {
+  return [
+    {
+      role: 'system',
+      content: 'You are an expert SEO content writer. Always return clean JSON only.'
+    },
+    {
+      role: 'user',
+      content: prompt
+    }
+  ];
+}
+
+function errorMessageOf(error) {
+  return String(
+    error?.response?.data?.error?.message ||
+    error?.response?.data?.message ||
+    error?.message ||
+    ''
+  ).toLowerCase();
+}
+
+// Single chat-completion call with a specific parameter profile.
+async function callChatCompletion({ endpoint, apiKey, model, maxTokens, timeoutMs, prompt, profile }) {
+  const payload = {
+    model,
+    messages: buildMessages(prompt)
+  };
+
+  if (profile.includeTemperature) {
+    payload.temperature = 0.7;
+  }
+
+  if (Number(maxTokens) > 0) {
+    payload[profile.tokenParam] = Number(maxTokens);
+  }
+
+  if (profile.useJsonMode) {
+    payload.response_format = { type: 'json_object' };
+  }
+
+  const response = await axios.post(
+    endpoint,
+    payload,
+    {
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json'
+      },
+      timeout: timeoutMs
+    }
+  );
+
+  return response?.data?.choices?.[0]?.message?.content;
+}
+
+// Adaptive request: progressively drops/swaps parameters that a given model
+// rejects (JSON mode, temperature, max_tokens vs max_completion_tokens) so that
+// any OpenAI-compatible Sumopod model can be used.
+async function requestSumopodContent({ endpoint, apiKey, model, maxTokens, timeoutMs, prompt }) {
+  const profile = {
+    useJsonMode: true,
+    includeTemperature: true,
+    tokenParam: 'max_tokens'
+  };
+  let effectiveMaxTokens = maxTokens;
+
+  // Bounded number of adaptations to avoid infinite loops.
+  for (let attempt = 0; attempt < 6; attempt++) {
+    try {
+      return await callChatCompletion({
+        endpoint,
+        apiKey,
+        model,
+        maxTokens: effectiveMaxTokens,
+        timeoutMs,
+        prompt,
+        profile
+      });
+    } catch (error) {
+      const status = error?.response?.status;
+      const message = errorMessageOf(error);
+      const isParamError = status === 400 || status === 404 || status === 422;
+
+      if (isParamError && profile.useJsonMode &&
+        (message.includes('response_format') || message.includes('json_object') || message.includes('json mode'))) {
+        profile.useJsonMode = false;
+        continue;
+      }
+
+      if (isParamError && profile.includeTemperature && message.includes('temperature')) {
+        profile.includeTemperature = false;
+        continue;
+      }
+
+      if (isParamError && profile.tokenParam === 'max_tokens' &&
+        (message.includes('max_tokens') || message.includes('max_completion_tokens'))) {
+        profile.tokenParam = 'max_completion_tokens';
+        continue;
+      }
+
+      if (isParamError && profile.tokenParam === 'max_completion_tokens' &&
+        message.includes('max_completion_tokens')) {
+        // Model rejects an explicit token cap entirely; let it use its default.
+        effectiveMaxTokens = 0;
+        profile.tokenParam = 'max_tokens';
+        continue;
+      }
+
+      throw error;
+    }
+  }
+
+  // Last resort: minimal payload with no optional parameters.
+  return await callChatCompletion({
+    endpoint,
+    apiKey,
+    model,
+    maxTokens: 0,
+    timeoutMs,
+    prompt,
+    profile: { useJsonMode: false, includeTemperature: false, tokenParam: 'max_tokens' }
+  });
+}
+
+export async function generatePostContent(apiKey, topic, language = 'id', refinementHint = '', options = {}) {
   if (!apiKey) {
     throw new Error('Sumopod API key is missing. Please configure it in User Credentials.');
   }
@@ -95,26 +413,33 @@ export async function generatePostContent(apiKey, topic, language = 'id', refine
     throw new Error('Invalid Sumopod API key format.');
   }
 
-  const baseUrl = (process.env.SUMOPOD_BASE_URL || 'https://ai.sumopod.com/v1').replace(/\/$/, '');
+  const baseUrl = getSumopodBaseUrl();
   const endpoint = `${baseUrl}/chat/completions`;
-  const model = process.env.SUMOPOD_MODEL || 'gpt-4o-mini';
+  const model = String(options?.model || process.env.SUMOPOD_MODEL || 'gpt-4o-mini').trim();
+  const timeoutMs = getPositiveNumberEnv('SUMOPOD_TIMEOUT_MS', 180000);
+  // Default 0 = do not cap output tokens (let the model produce full content).
+  // Set SUMOPOD_MAX_TOKENS to a positive number to enforce a cap.
+  const maxTokens = getOptionalTokenEnv('SUMOPOD_MAX_TOKENS', 0);
+  const retryMaxTokens = getOptionalTokenEnv('SUMOPOD_RETRY_MAX_TOKENS', 0);
 
-  const languageInstruction =
-    language === 'en'
-      ? 'Write the entire output in English.'
-      : 'Tulis seluruh output dalam Bahasa Indonesia.';
+  const languageInstruction = getLanguageInstruction(language);
 
   const prompt = `Generate a SEO-optimized blog post about "${topic}".
 
 LANGUAGE REQUIREMENT:
 ${languageInstruction}
 
+${getTitleStyleRules(topic)}
+
+${getReadabilityRules()}
+- Use <h2>/<h3>, at least one <ul> and one <ol>, and a short FAQ at the end.
+
 Return ONLY valid JSON (no markdown):
 {
-  "title": "SEO title (50-60 chars, timeless)",
+  "title": "Natural human-sounding title (50-60 chars, timeless, no clichés)",
   "slug": "url-friendly-slug",
   "metaDescription": "150-160 chars",
-  "content": "Full HTML content with <h2>, <h3>, <p>, <strong>, <em> tags. Must be 1200+ words.",
+  "content": "Full HTML content with <h2>, <h3>, <p>, <strong>, <em> tags. Must be 1200+ words, easy to read.",
   "imagePrompt": "professional business image search query",
   "keywords": ["keyword1", "keyword2", "keyword3"],
   "seoScore": 85
@@ -123,44 +448,54 @@ Return ONLY valid JSON (no markdown):
 ${refinementHint ? `REVISION INSTRUCTIONS (MUST FOLLOW):\n${refinementHint}` : ''}`;
 
   try {
-    const response = await axios.post(
+    let rawContent = await requestSumopodContent({
       endpoint,
-      {
-        model,
-        max_tokens: 1500,
-        temperature: 0.7,
-        messages: [
-          {
-            role: 'system',
-            content: 'You are an expert SEO content writer. Always return clean JSON only.'
-          },
-          {
-            role: 'user',
-            content: prompt
-          }
-        ]
-      },
-      {
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          'Content-Type': 'application/json'
-        },
-        timeout: 60000
+      apiKey,
+      model,
+      maxTokens,
+      timeoutMs,
+      prompt
+    });
+
+    let result = parseGeneratedPayload(rawContent, topic);
+
+    // If the JSON was cut off, retry once with a larger budget when that can help.
+    if (!result.ok && result.reason === 'truncated') {
+      const firstCap = Number(maxTokens) > 0 ? Number(maxTokens) : 0;
+      let retryCap = Number(retryMaxTokens) > 0 ? Number(retryMaxTokens) : 0;
+      if (retryCap === 0 && firstCap > 0) {
+        retryCap = Math.max(firstCap * 2, 6000);
       }
-    );
 
-    const text = response?.data?.choices?.[0]?.message?.content;
-    if (!text) {
-      throw new Error('Empty response from Sumopod');
+      const canRetryHelp = firstCap > 0 || retryCap > 0;
+      if (canRetryHelp) {
+        console.warn(`⚠️  [Sumopod] Truncated JSON for model ${model}. Retrying with max_tokens=${retryCap || 'uncapped'}.`);
+        rawContent = await requestSumopodContent({
+          endpoint,
+          apiKey,
+          model,
+          maxTokens: retryCap,
+          timeoutMs,
+          prompt
+        });
+        result = parseGeneratedPayload(rawContent, topic);
+      }
     }
 
-    const jsonCandidate = extractFirstJsonObject(text);
-    if (!jsonCandidate) {
-      throw new Error('Sumopod did not return JSON content');
+    if (result.ok) {
+      return normalizeOutput(result.value, topic, language);
     }
 
-    const parsed = JSON.parse(jsonCandidate);
-    return normalizeOutput(parsed, topic, language);
+    // Final fallback: salvage usable content from an incomplete/non-standard response.
+    if (result.reason === 'truncated' || result.reason === 'nojson') {
+      const salvaged = recoverStructuredJson(normalizeModelText(rawContent), topic);
+      if (hasUsableContent(salvaged)) {
+        console.warn(`⚠️  [Sumopod] Using salvaged content from a partial response for model ${model}.`);
+        return normalizeOutput(salvaged, topic, language);
+      }
+    }
+
+    throw new Error(`Sumopod did not return usable content. Response preview: ${(result.text || '').slice(0, 200)}`);
   } catch (error) {
     const status = error?.response?.status;
     const apiError = error?.response?.data?.error?.message || error?.response?.data?.message;
@@ -174,8 +509,50 @@ ${refinementHint ? `REVISION INSTRUCTIONS (MUST FOLLOW):\n${refinementHint}` : '
       throw new Error(`Sumopod rate limit exceeded: ${message}`);
     }
 
+    if (error?.code === 'ECONNABORTED') {
+      throw new Error(`Sumopod request timed out after ${timeoutMs}ms for model ${model}. Increase SUMOPOD_TIMEOUT_MS or use a faster model.`);
+    }
+
     throw new Error(`Sumopod generation failed: ${message}`);
   }
 }
 
-export default { generatePostContent };
+export async function getAvailableModels(apiKey) {
+  if (!apiKey) {
+    throw new Error('Sumopod API key is missing. Please configure it in User Credentials.');
+  }
+
+  const endpoint = `${getSumopodBaseUrl()}/models`;
+
+  try {
+    const response = await axios.get(endpoint, {
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json'
+      },
+      timeout: 30000
+    });
+
+    const models = Array.isArray(response?.data?.data) ? response.data.data : [];
+
+    return models
+      .map((model) => ({
+        id: String(model?.id || '').trim(),
+        ownedBy: model?.owned_by || model?.ownedBy || '',
+        created: model?.created || null
+      }))
+      .filter((model) => model.id);
+  } catch (error) {
+    const status = error?.response?.status;
+    const apiError = error?.response?.data?.error?.message || error?.response?.data?.message;
+    const message = apiError || error.message;
+
+    if (status === 401 || status === 403) {
+      throw new Error(`Sumopod authentication failed: ${message}`);
+    }
+
+    throw new Error(`Failed to fetch Sumopod models: ${message}`);
+  }
+}
+
+export default { generatePostContent, getAvailableModels };

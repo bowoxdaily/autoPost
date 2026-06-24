@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS users (
   ai_provider VARCHAR(20) NOT NULL DEFAULT 'gemini',
   gemini_api_key TEXT,
   sumopod_api_key TEXT,
+  sumopod_model TEXT NOT NULL DEFAULT 'gpt-4o-mini',
   chatgpt_api_key TEXT,
   claude_api_key TEXT,
   wordpress_url TEXT,
@@ -137,6 +138,7 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS api_limit BIGINT NOT NULL DEFAULT 100
 ALTER TABLE users ADD COLUMN IF NOT EXISTS ai_provider VARCHAR(20) NOT NULL DEFAULT 'gemini';
 ALTER TABLE users ADD COLUMN IF NOT EXISTS gemini_api_key TEXT;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS sumopod_api_key TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS sumopod_model TEXT NOT NULL DEFAULT 'gpt-4o-mini';
 ALTER TABLE users ADD COLUMN IF NOT EXISTS chatgpt_api_key TEXT;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS claude_api_key TEXT;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS wordpress_url TEXT;

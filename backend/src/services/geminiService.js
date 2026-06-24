@@ -1,4 +1,10 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import {
+  getLanguageInstruction,
+  getFallbackTitle,
+  getTitleStyleRules,
+  getReadabilityRules
+} from './promptStyle.js';
 
 function slugify(value) {
   return String(value || '')
@@ -11,9 +17,7 @@ function slugify(value) {
 }
 
 function normalizeOutput(parsed, topic, language) {
-  const fallbackTitle = language === 'en'
-    ? `Best ${topic}: Complete Guide`
-    : `Panduan Lengkap ${topic} Terbaik`;
+  const fallbackTitle = getFallbackTitle(topic, language);
 
   const title = String(parsed?.title || fallbackTitle).trim();
   const slug = slugify(parsed?.slug || title || topic);
@@ -120,10 +124,7 @@ export async function generatePostContent(apiKey, topic, language = 'id', refine
       4. Ensure API is enabled in: https://console.cloud.google.com/apis/library/generativelanguage.googleapis.com`);
     }
 
-    const languageInstruction =
-      language === 'en'
-        ? 'Write the entire output in English.'
-        : 'Tulis seluruh output dalam Bahasa Indonesia.';
+    const languageInstruction = getLanguageInstruction(language);
 
     const prompt = `Generate a SEO-optimized blog post about "${topic}".
 
@@ -133,13 +134,8 @@ ${languageInstruction}
 CRITICAL: NO DATES OR "LATEST" IN TITLE - Make it timeless for long-term ranking!
 
 REQUIREMENTS FOR SEO PAGE 1 RANKING:
-1. TITLE (50-60 chars, include keyword at start):
-   - Use power words: How, Best, Complete, Guide, Tips, Proven, Essential, Definitive
-   - Include "${topic}" naturally and early in title
-   - NO dates (no 2024, 2025, 3/31, etc) - dates age content
-   - NO "Latest", "New", "Updated" - not SEO-friendly
-   - Example: "Best ${topic}: Complete Guide" or "How to Master ${topic}"
-   - Make it TIMELESS - should rank well in 2+ years
+1. TITLE:
+${getTitleStyleRules(topic)}
 
 2. SLUG: Generate URL-friendly slug (lowercase, hyphens)
    - Reflect the main keyword, no dates
@@ -152,16 +148,13 @@ REQUIREMENTS FOR SEO PAGE 1 RANKING:
    - NO dates or "latest" keywords
    - Compelling, click-worthy
 
-4. CONTENT (1500+ words):
-   - Use H2 headers for main sections
-   - Use H3 headers for subsections
+4. CONTENT (1500+ words) - WRITE FOR EASY READING:
+${getReadabilityRules()}
+   - Use H2 headers for main sections, H3 for subsections
    - Include at least one bullet list (<ul><li>) and one numbered list (<ol><li>)
    - Add a short FAQ section with 3-5 questions at the end (H2 + H3)
-   - Include target keyword in first 100 words
-   - Keyword density 1-2%
-   - Include actionable, proven tips
-   - Add related topic suggestions
-   - Write for readers, optimize for search
+   - Include target keyword in first 100 words, keyword density 1-2%
+   - Write for readers first, optimize for search second
    - DO NOT reference specific dates or "latest trends" - focus on evergreen content
    - Use phrases like "current best practices" not "2024 trends"
 

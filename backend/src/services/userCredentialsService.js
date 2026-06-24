@@ -14,7 +14,7 @@ export async function getUserCredentialsForPosting(userId) {
 
     const { data, error } = await supabaseAdmin
       .from('users')
-      .select('ai_provider, gemini_api_key, sumopod_api_key, chatgpt_api_key, claude_api_key, wordpress_url, wordpress_username, wordpress_password, content_language, trending_enabled, trending_niche, include_images')
+      .select('ai_provider, gemini_api_key, sumopod_api_key, sumopod_model, chatgpt_api_key, claude_api_key, wordpress_url, wordpress_username, wordpress_password, content_language, trending_enabled, trending_niche, include_images')
       .eq('id', userId)
       .single();
 
@@ -33,6 +33,7 @@ export async function getUserCredentialsForPosting(userId) {
       aiProvider,
       geminiKey: data.gemini_api_key ? decrypt(data.gemini_api_key) : null,
       sumopodKey: data.sumopod_api_key ? decrypt(data.sumopod_api_key) : null,
+      sumopodModel: data.sumopod_model || process.env.SUMOPOD_MODEL || 'gpt-4o-mini',
       chatgptKey: data.chatgpt_api_key ? decrypt(data.chatgpt_api_key) : null,
       claudeKey: data.claude_api_key ? decrypt(data.claude_api_key) : null,
       wpUrl: data.wordpress_url ? decrypt(data.wordpress_url) : null,

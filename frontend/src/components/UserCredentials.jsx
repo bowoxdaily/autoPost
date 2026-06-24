@@ -9,6 +9,7 @@ export default function UserCredentials() {
     ai_provider: 'gemini',
     gemini_api_key: '',
     sumopod_api_key: '',
+    sumopod_model: 'gpt-4o-mini',
     chatgpt_api_key: '',
     claude_api_key: '',
     wordpress_url: '',
@@ -31,6 +32,8 @@ export default function UserCredentials() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [verifying, setVerifying] = useState(null);
+  const [sumopodModels, setSumopodModels] = useState([]);
+  const [loadingSumopodModels, setLoadingSumopodModels] = useState(false);
   const [message, setMessage] = useState({ type: '', text: '' });
 
   // Fetch existing credentials on mount
@@ -38,18 +41,64 @@ export default function UserCredentials() {
     fetchCredentials();
   }, []);
 
+  useEffect(() => {
+    if (credentials.ai_provider === 'sumopod' && credentials.sumopod_api_key) {
+      fetchSumopodModels();
+    }
+  }, [credentials.ai_provider]);
+
   const fetchCredentials = async () => {
     try {
       setLoading(true);
       const response = await api.get('/user-settings');
       if (response.data.success) {
-        setCredentials(response.data.settings);
+        const nextSettings = {
+          ...response.data.settings,
+          sumopod_model: response.data.settings.sumopod_model || 'gpt-4o-mini'
+        };
+
+        setCredentials(prev => ({
+          ...prev,
+          ...nextSettings
+        }));
+
+        if (nextSettings.ai_provider === 'sumopod' && nextSettings.sumopod_api_key) {
+          fetchSumopodModels();
+        }
       }
     } catch (error) {
       console.error('Failed to fetch credentials:', error);
       notifyError(getApiErrorMessage(error, 'Failed to fetch credentials'));
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchSumopodModels = async () => {
+    try {
+      setLoadingSumopodModels(true);
+      const response = await api.get('/user-settings/sumopod-models');
+
+      if (response.data.success) {
+        const models = Array.isArray(response.data.models) ? response.data.models : [];
+        setSumopodModels(models);
+        setCredentials(prev => {
+          const defaultModel = response.data.defaultModel || 'gpt-4o-mini';
+          const hasCurrent = models.some(model => model.id === prev.sumopod_model);
+
+          return {
+            ...prev,
+            sumopod_model: hasCurrent ? prev.sumopod_model : (models[0]?.id || prev.sumopod_model || defaultModel)
+          };
+        });
+      }
+    } catch (error) {
+      setSumopodModels([]);
+      if (credentials.ai_provider === 'sumopod') {
+        notifyError(getApiErrorMessage(error, 'Failed to load Sumopod models'));
+      }
+    } finally {
+      setLoadingSumopodModels(false);
     }
   };
 
@@ -120,6 +169,9 @@ export default function UserCredentials() {
           text: response.data.message
         });
         notifySuccess(response.data.message || 'Verification successful.');
+        if (credentialType === 'sumopod') {
+          fetchSumopodModels();
+        }
       }
     } catch (error) {
       notifyError(getApiErrorMessage(error, `Failed to verify ${credentialType} credentials`));
@@ -222,6 +274,35 @@ export default function UserCredentials() {
                 {showPasswords.sumopod_api_key ? <EyeOff size={18} /> : <Eye size={18} />}
               </button>
             </div>
+          </div>
+
+          <div className="form-group">
+            <label htmlFor="sumopod_model">Sumopod Model</label>
+            <select
+              id="sumopod_model"
+              name="sumopod_model"
+              value={credentials.sumopod_model || 'gpt-4o-mini'}
+              onChange={handleInputChange}
+              className="input-field"
+              disabled={!credentials.sumopod_api_key || loadingSumopodModels}
+            >
+              {sumopodModels.length === 0 ? (
+                <option value={credentials.sumopod_model || 'gpt-4o-mini'}>
+                  {loadingSumopodModels ? 'Loading Sumopod models...' : (credentials.sumopod_model || 'gpt-4o-mini')}
+                </option>
+              ) : (
+                sumopodModels.map((model) => (
+                  <option key={model.id} value={model.id}>
+                    {model.id}
+                  </option>
+                ))
+              )}
+            </select>
+            <p className="text-xs text-gray-500 mt-2">
+              {credentials.sumopod_api_key
+                ? 'Model list diambil dari akun Sumopod kamu. Save atau verify key jika list belum muncul.'
+                : 'Masukkan Sumopod API key terlebih dulu untuk mengambil daftar model.'}
+            </p>
           </div>
 
           <button

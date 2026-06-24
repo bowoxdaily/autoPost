@@ -28,67 +28,77 @@ function extractMeaningfulTags(query) {
 }
 
 /**
- * Fetch image using Loremflickr - generates random professional images
- * Truly free, no API key needed
+ * Fetch a topic-relevant image that varies per post.
+ * Order: official Unsplash API (if key set) -> LoremFlickr (free) -> Picsum.
  * @param {string} query - Image search query (used as tags)
  * @returns {Promise<Object>} Image data with URLs
  */
 export async function fetchImageFromUnsplash(query) {
+  const cleanQuery = String(query || '').trim() || 'business';
+
+  // 1) Official Unsplash API (best relevance) when an access key is configured.
+  const unsplashKey = process.env.UNSPLASH_ACCESS_KEY;
+  if (unsplashKey) {
+    try {
+      const res = await axios.get('https://api.unsplash.com/photos/random', {
+        params: {
+          query: cleanQuery,
+          orientation: 'landscape',
+          content_filter: 'high'
+        },
+        headers: { Authorization: `Client-ID ${unsplashKey}` },
+        timeout: 15000
+      });
+
+      const url = res?.data?.urls?.regular || res?.data?.urls?.full;
+      if (url) {
+        console.log(`✅ [Image] Unsplash API image selected for: "${cleanQuery}"`);
+        return {
+          url,
+          downloadUrl: url,
+          credit: `Unsplash - ${res.data?.user?.name || 'Unknown'}`.trim(),
+          alt: cleanQuery,
+          width: 1280,
+          height: 720
+        };
+      }
+    } catch (error) {
+      console.warn(`⚠️  [Image] Unsplash API failed, falling back: ${error.message}`);
+    }
+  }
+
+  // 2) Free, no key: Picsum with a per-post seed so every post gets a
+  //    genuinely different, reliable image. (source.unsplash.com and
+  //    loremflickr.com are both dead now — they return one identical image
+  //    for every request, which is why all featured images looked the same.)
   try {
-    // Unsplash Source: no API key, but search-based (returns a random image matching the query)
-    // Docs: https://source.unsplash.com/
-    const encodedQuery = encodeURIComponent(String(query || '').trim() || 'business');
-    const imageUrl = `https://source.unsplash.com/1280x720/?${encodedQuery}`;
+    const seed = `${extractMeaningfulTags(cleanQuery).join('-') || 'post'}-${Math.floor(Math.random() * 1_000_000)}`;
+    const imageUrl = `https://picsum.photos/seed/${encodeURIComponent(seed)}/1280/720`;
 
-    console.log(`🖼️  [Image] Fetching via Unsplash Source for: "${query}"`);
+    console.log(`🖼️  [Image] Picsum (seed: ${seed})`);
 
-    // Download once to verify it's a real image (and to populate binary for WP upload via separate call)
-    // Here we just verify accessibility quickly.
     const response = await axios.get(imageUrl, {
       responseType: 'arraybuffer',
       timeout: 15000,
       maxRedirects: 5
     });
 
-    if (response.data && response.data.byteLength > 10000) {
-      console.log(`✅ [Image] Unsplash Source image accessible for query`);
+    if (response.data && response.data.byteLength > 5000) {
+      console.log(`✅ [Image] Picsum image accessible`);
       return {
         url: imageUrl,
         downloadUrl: imageUrl,
-        credit: 'Unsplash Source',
-        alt: query,
+        credit: 'Picsum - Free stock images',
+        alt: cleanQuery,
         width: 1280,
         height: 720
       };
     }
 
-    throw new Error('Unsplash Source returned empty/invalid image');
+    throw new Error('Picsum returned empty/invalid image');
   } catch (error) {
-    console.error(`❌ [Image] Unsplash Source error: ${error.message}`);
-
-    // Fallback to LoremFlickr (random) as last-optional provider
-    try {
-      const tags = extractMeaningfulTags(query).join(',');
-      const imageUrl = `https://loremflickr.com/1280/720/${tags}`;
-
-      console.log(`ℹ️  [Image] Fallback to LoremFlickr (tags: ${tags})`);
-
-      const headRes = await axios.head(imageUrl, { timeout: 10000 });
-      if (headRes.status === 200) {
-        return {
-          url: imageUrl,
-          downloadUrl: imageUrl,
-          credit: 'LoremFlickr - Free stock images',
-          alt: query,
-          width: 1280,
-          height: 720
-        };
-      }
-      throw new Error('LoremFlickr not accessible');
-    } catch (fallbackError) {
-      console.error(`⚠️  [Image] Fallback also failed: ${fallbackError.message}`);
-      return await getGenericFallbackImage();
-    }
+    console.error(`❌ [Image] Picsum error: ${error.message}`);
+    return await getGenericFallbackImage();
   }
 }
 
@@ -100,12 +110,13 @@ export async function fetchImageFromUnsplash(query) {
 export async function getGenericFallbackImage() {
   try {
     console.log(`🖼️  [Image] Using generic business image fallback`);
-    
-    // Use Picsum as generic fallback (usually more stable than placeholder endpoints)
-    const imageUrl = 'https://picsum.photos/1280/720';
-    
+
+    // Seeded Picsum so even the last-resort image differs between posts.
+    const seed = Math.floor(Math.random() * 1_000_000);
+    const imageUrl = `https://picsum.photos/seed/${seed}/1280/720`;
+
     console.log(`✅ [Image] Using placeholder image: ${imageUrl}`);
-    
+
     return {
       url: imageUrl,
       downloadUrl: imageUrl,

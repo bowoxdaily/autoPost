@@ -11,7 +11,7 @@ export async function runMigrations() {
     // Check if user credential columns exist
     const { data: userData, error: userError } = await supabaseAdmin
       .from('users')
-      .select('gemini_api_key, wordpress_url, wordpress_username, wordpress_password, content_language, trending_enabled, trending_niche')
+      .select('gemini_api_key, wordpress_url, wordpress_username, wordpress_password, content_language, trending_enabled, trending_niche, sumopod_model')
       .limit(1);
 
     if (userError && userError.code === '42703') {
@@ -59,6 +59,7 @@ export async function runMigrationsSQL() {
       ALTER TABLE users ADD COLUMN IF NOT EXISTS content_language TEXT DEFAULT 'id';
       ALTER TABLE users ADD COLUMN IF NOT EXISTS trending_enabled BOOLEAN DEFAULT true;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS trending_niche TEXT DEFAULT '';
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS sumopod_model TEXT DEFAULT 'gpt-4o-mini';
     `;
 
     const logsMigration = `

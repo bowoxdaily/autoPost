@@ -19,14 +19,31 @@ function getProviderApiKey(credentials) {
 }
 
 function mergeSeoKeywords(aiKeywords = [], trendingKeywords = [], topic = '') {
+  const clean = (arr) => (Array.isArray(arr) ? arr : [])
+    .map(k => String(k || '').trim())
+    .filter(Boolean);
+
+  const ai = clean(aiKeywords);
+  const trends = clean(trendingKeywords);
+  const topicClean = String(topic || '').trim();
+
+  const toTokens = (text) => String(text || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .split(/\s+/)
+    .filter(t => t.length >= 3);
+
+  // Only keep trending keywords that are topically relevant, otherwise the
+  // day's general trends (same for everyone) would become identical tags on
+  // every post.
+  const topicTokens = new Set([...toTokens(topicClean), ...ai.flatMap(toTokens)]);
+  const relevantTrends = trends.filter(t =>
+    toTokens(t).some(tok => topicTokens.has(tok))
+  );
+
+  // Post-specific AI keywords first, then the topic, then only relevant trends.
   return [...new Set(
-    [
-      ...(Array.isArray(trendingKeywords) ? trendingKeywords : []),
-      ...(Array.isArray(aiKeywords) ? aiKeywords : []),
-      topic
-    ]
-      .map(k => String(k || '').trim())
-      .filter(Boolean)
+    [...ai, topicClean, ...relevantTrends].filter(Boolean)
   )].slice(0, 6);
 }
 
@@ -60,8 +77,10 @@ function validateSeoGuardrails(postContent, topic) {
   };
 }
 
-async function generateSeoPostWithGuardrails({ provider, apiKey, topic, contentLanguage }) {
-  let postContent = await generatePostContent(provider, apiKey, topic, contentLanguage);
+async function generateSeoPostWithGuardrails({ provider, apiKey, topic, contentLanguage, sumopodModel }) {
+  const generationOptions = provider === 'sumopod' ? { model: sumopodModel } : {};
+
+  let postContent = await generatePostContent(provider, apiKey, topic, contentLanguage, '', generationOptions);
   const firstPass = validateSeoGuardrails(postContent, topic);
   if (firstPass.passed) return postContent;
 
@@ -70,7 +89,7 @@ async function generateSeoPostWithGuardrails({ provider, apiKey, topic, contentL
 Keep the output strictly valid JSON with complete HTML content.`;
 
   console.log(`⚠️  [SEO Guardrail] First draft below threshold, regenerating once...`);
-  postContent = await generatePostContent(provider, apiKey, topic, contentLanguage, refinementHint);
+  postContent = await generatePostContent(provider, apiKey, topic, contentLanguage, refinementHint, generationOptions);
   return postContent;
 }
 
@@ -179,7 +198,8 @@ async function runAutoPost() {
       provider: credentials.aiProvider,
       apiKey: getProviderApiKey(credentials),
       topic,
-      contentLanguage
+      contentLanguage,
+      sumopodModel: credentials.sumopodModel
     });
 
     const trendingKeywords = credentials.trendingEnabled
@@ -349,7 +369,8 @@ export async function runPostNow(userId) {
       provider: credentials.aiProvider,
       apiKey: getProviderApiKey(credentials),
       topic,
-      contentLanguage
+      contentLanguage,
+      sumopodModel: credentials.sumopodModel
     });
 
     const trendingKeywords = credentials.trendingEnabled

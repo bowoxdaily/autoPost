@@ -2,7 +2,7 @@ import { generatePostContent as generateWithGemini } from './geminiService.js';
 import { generatePostContent as generateWithSumopod } from './sumopodService.js';
 
 // Placeholder untuk ChatGPT
-async function generateWithChatGPT(apiKey, topic, language = 'id', refinementHint = '') {
+async function generateWithChatGPT(apiKey, topic, language = 'id', refinementHint = '', options = {}) {
   if (!apiKey) {
     throw new Error('ChatGPT API key is missing');
   }
@@ -13,7 +13,7 @@ async function generateWithChatGPT(apiKey, topic, language = 'id', refinementHin
 }
 
 // Placeholder untuk Claude
-async function generateWithClaude(apiKey, topic, language = 'id', refinementHint = '') {
+async function generateWithClaude(apiKey, topic, language = 'id', refinementHint = '', options = {}) {
   if (!apiKey) {
     throw new Error('Claude API key is missing');
   }
@@ -29,9 +29,10 @@ async function generateWithClaude(apiKey, topic, language = 'id', refinementHint
  * @param {string} topic - Topic for the post
  * @param {string} language - Language: 'id' or 'en'
  * @param {string} refinementHint - Optional hint for content refinement
+ * @param {object} options - Provider-specific options such as model overrides
  * @returns {object} - Generated post content
  */
-export async function generatePostContent(provider, apiKey, topic, language = 'id', refinementHint = '') {
+export async function generatePostContent(provider, apiKey, topic, language = 'id', refinementHint = '', options = {}) {
   console.log(`🤖 [ContentGeneration] Using provider: ${provider}`);
 
   switch (provider?.toLowerCase()) {
@@ -39,13 +40,13 @@ export async function generatePostContent(provider, apiKey, topic, language = 'i
       return await generateWithGemini(apiKey, topic, language, refinementHint);
 
     case 'sumopod':
-      return await generateWithSumopod(apiKey, topic, language, refinementHint);
+      return await generateWithSumopod(apiKey, topic, language, refinementHint, options);
     
     case 'chatgpt':
-      return await generateWithChatGPT(apiKey, topic, language, refinementHint);
+      return await generateWithChatGPT(apiKey, topic, language, refinementHint, options);
     
     case 'claude':
-      return await generateWithClaude(apiKey, topic, language, refinementHint);
+      return await generateWithClaude(apiKey, topic, language, refinementHint, options);
     
     default:
       throw new Error(`Unknown AI provider: ${provider}. Supported: gemini, sumopod, chatgpt, claude`);

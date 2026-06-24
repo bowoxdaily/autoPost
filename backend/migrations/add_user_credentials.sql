@@ -9,6 +9,7 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS content_language TEXT DEFAULT 'id';
 ALTER TABLE users ADD COLUMN IF NOT EXISTS trending_enabled BOOLEAN DEFAULT true;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS trending_niche TEXT DEFAULT '';
 ALTER TABLE users ADD COLUMN IF NOT EXISTS include_images BOOLEAN DEFAULT true;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS sumopod_model TEXT DEFAULT 'gpt-4o-mini';
 
 -- Create index for faster lookups
 CREATE INDEX IF NOT EXISTS idx_users_gemini_key ON users(id) WHERE gemini_api_key IS NOT NULL;
@@ -21,3 +22,4 @@ COMMENT ON COLUMN users.content_language IS 'Preferred content language: id (Bah
 COMMENT ON COLUMN users.trending_enabled IS 'Whether to use Google Trends for choosing post topic';
 COMMENT ON COLUMN users.trending_niche IS 'Optional niche keyword to filter trending results';
 COMMENT ON COLUMN users.include_images IS 'Whether posts should include featured image upload flow';
+COMMENT ON COLUMN users.sumopod_model IS 'Preferred Sumopod model for per-user content generation';

@@ -1,5 +1,6 @@
 import { supabaseAdmin } from '../utils/supabase.js';
 import { encrypt, decrypt } from '../utils/encryption.js';
+import { getAvailableModels as getAvailableSumopodModels } from '../services/sumopodService.js';
 
 /**
  * Get user's credentials (Gemini API Key and WordPress settings)
@@ -15,7 +16,7 @@ export async function getUserSettings(req, res) {
 
     const { data, error } = await supabaseAdmin
       .from('users')
-      .select('ai_provider, gemini_api_key, sumopod_api_key, chatgpt_api_key, claude_api_key, wordpress_url, wordpress_username, wordpress_password, content_language, trending_enabled, trending_niche, include_images')
+      .select('ai_provider, gemini_api_key, sumopod_api_key, sumopod_model, chatgpt_api_key, claude_api_key, wordpress_url, wordpress_username, wordpress_password, content_language, trending_enabled, trending_niche, include_images')
       .eq('id', userId)
       .single();
 
@@ -33,6 +34,7 @@ export async function getUserSettings(req, res) {
       ai_provider: data.ai_provider || 'gemini',
       gemini_api_key: data.gemini_api_key ? decrypt(data.gemini_api_key) : '',
       sumopod_api_key: data.sumopod_api_key ? decrypt(data.sumopod_api_key) : '',
+      sumopod_model: data.sumopod_model || process.env.SUMOPOD_MODEL || 'gpt-4o-mini',
       chatgpt_api_key: data.chatgpt_api_key ? decrypt(data.chatgpt_api_key) : '',
       claude_api_key: data.claude_api_key ? decrypt(data.claude_api_key) : '',
       wordpress_url: data.wordpress_url ? decrypt(data.wordpress_url) : '',
@@ -70,6 +72,7 @@ export async function updateUserSettings(req, res) {
       ai_provider,
       gemini_api_key,
       sumopod_api_key,
+      sumopod_model,
       chatgpt_api_key,
       claude_api_key,
       wordpress_url,
@@ -86,6 +89,7 @@ export async function updateUserSettings(req, res) {
       ai_provider === undefined &&
       gemini_api_key === undefined &&
       sumopod_api_key === undefined &&
+      sumopod_model === undefined &&
       chatgpt_api_key === undefined &&
       claude_api_key === undefined &&
       wordpress_url === undefined &&
@@ -130,6 +134,9 @@ export async function updateUserSettings(req, res) {
     }
     if (sumopod_api_key !== undefined) {
       encryptedSettings.sumopod_api_key = sumopod_api_key ? encrypt(sumopod_api_key) : null;
+    }
+    if (sumopod_model !== undefined) {
+      encryptedSettings.sumopod_model = String(sumopod_model || '').trim() || (process.env.SUMOPOD_MODEL || 'gpt-4o-mini');
     }
     if (chatgpt_api_key !== undefined) {
       encryptedSettings.chatgpt_api_key = chatgpt_api_key ? encrypt(chatgpt_api_key) : null;
@@ -182,6 +189,7 @@ export async function updateUserSettings(req, res) {
         ai_provider: data.ai_provider || 'gemini',
         gemini_api_key: data.gemini_api_key ? '***' : '',
         sumopod_api_key: data.sumopod_api_key ? '***' : '',
+        sumopod_model: data.sumopod_model || process.env.SUMOPOD_MODEL || 'gpt-4o-mini',
         chatgpt_api_key: data.chatgpt_api_key ? '***' : '',
         claude_api_key: data.claude_api_key ? '***' : '',
         wordpress_url: data.wordpress_url ? decrypt(data.wordpress_url) : '',
@@ -342,5 +350,43 @@ export async function verifyUserCredentials(req, res) {
   } catch (error) {
     console.error('Error verifying credentials:', error);
     res.status(500).json({ success: false, error: 'Failed to verify credentials' });
+  }
+}
+
+export async function getSumopodModels(req, res) {
+  try {
+    const userId = req.user?.id;
+
+    if (!userId) {
+      return res.status(401).json({ success: false, error: 'User not authenticated or ID missing' });
+    }
+
+    const { data, error } = await supabaseAdmin
+      .from('users')
+      .select('sumopod_api_key')
+      .eq('id', userId)
+      .single();
+
+    if (error) {
+      return res.status(400).json({ success: false, error: error.message });
+    }
+
+    const encryptedKey = data?.sumopod_api_key;
+    const apiKey = encryptedKey ? decrypt(encryptedKey) : null;
+
+    if (!apiKey) {
+      return res.status(400).json({ success: false, error: 'No Sumopod API key found' });
+    }
+
+    const models = await getAvailableSumopodModels(apiKey);
+
+    return res.json({
+      success: true,
+      models,
+      defaultModel: process.env.SUMOPOD_MODEL || 'gpt-4o-mini'
+    });
+  } catch (error) {
+    console.error('Error getting Sumopod models:', error);
+    return res.status(500).json({ success: false, error: error.message || 'Failed to get Sumopod models' });
   }
 }
