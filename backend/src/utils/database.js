@@ -11,6 +11,38 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const dataDir = path.join(__dirname, '../../data');
 const dbPath = path.join(dataDir, 'db.json');
 
+// Cluster state: file per user, tracks pillar/supporting cycle per niche
+const clusterPath = (userId) => path.join(dataDir, `clusters-${String(userId).replace(/[^a-z0-9-]/gi, '_')}.json`);
+
+/**
+ * Read cluster state for a user (file-based, no DB migration needed)
+ * @param {string} userId
+ * @returns {object} { [nicheKey]: { pillarTitle, pillarUrl, pillarPostId, supportingCount, createdAt } }
+ */
+export function getClusterState(userId) {
+  try {
+    const p = clusterPath(userId);
+    if (!fs.existsSync(p)) return {};
+    return JSON.parse(fs.readFileSync(p, 'utf8'));
+  } catch (err) {
+    console.warn('[Cluster] Could not read cluster state:', err.message);
+    return {};
+  }
+}
+
+/**
+ * Write cluster state for a user
+ * @param {string} userId
+ * @param {object} state
+ */
+export function updateClusterState(userId, state) {
+  try {
+    fs.writeFileSync(clusterPath(userId), JSON.stringify(state, null, 2));
+  } catch (err) {
+    console.warn('[Cluster] Could not save cluster state:', err.message);
+  }
+}
+
 // Default data structure (for legacy settings only)
 const defaultData = {
   settings: {

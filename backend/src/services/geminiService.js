@@ -3,7 +3,10 @@ import {
   getLanguageInstruction,
   getFallbackTitle,
   getTitleStyleRules,
-  getReadabilityRules
+  getReadabilityRules,
+  getSystemPersona,
+  getPillarPromptSection,
+  getSupportingPromptSection
 } from './promptStyle.js';
 
 function slugify(value) {
@@ -49,7 +52,7 @@ function normalizeOutput(parsed, topic, language) {
   };
 }
 
-export async function generatePostContent(apiKey, topic, language = 'id', refinementHint = '') {
+export async function generatePostContent(apiKey, topic, language = 'id', refinementHint = '', clusterContext = null) {
   try {
     // Validate API key format
     if (!apiKey) {
@@ -126,65 +129,84 @@ export async function generatePostContent(apiKey, topic, language = 'id', refine
 
     const languageInstruction = getLanguageInstruction(language);
 
-    const prompt = `Generate a SEO-optimized blog post about "${topic}".
+    const systemPersona = getSystemPersona(language);
 
-LANGUAGE REQUIREMENT:
-${languageInstruction}
+    // Build cluster section if context provided
+    let clusterSection = '';
+    if (clusterContext) {
+      if (clusterContext.mode === 'pillar') {
+        clusterSection = getPillarPromptSection(clusterContext.niche, language);
+      } else if (clusterContext.mode === 'supporting') {
+        clusterSection = getSupportingPromptSection(
+          clusterContext.niche,
+          clusterContext.pillarTitle,
+          clusterContext.pillarUrl,
+          clusterContext.supportingIndex,
+          language
+        );
+      }
+    }
 
-CRITICAL: NO DATES OR "LATEST" IN TITLE - Make it timeless for long-term ranking!
+    const prompt = `${systemPersona}
 
-REQUIREMENTS FOR SEO PAGE 1 RANKING:
-1. TITLE:
+Write a blog post about "${topic}".
+
+LANGUAGE: ${languageInstruction}
+
+━━━ HUMAN WRITING — THIS IS THE MOST IMPORTANT REQUIREMENT ━━━
+This post MUST pass AI content detection tools (GPTZero, Turnitin, Originality.ai).
+Write exactly as an experienced human blogger would — with genuine personality, rhythm variation, and real opinions.
+
 ${getTitleStyleRules(topic)}
 
-2. SLUG: Generate URL-friendly slug (lowercase, hyphens)
-   - Reflect the main keyword, no dates
-   - Example: "best-digital-marketing-strategy" not "digital-marketing-2024"
-
-3. META DESCRIPTION (150-160 chars):
-   - Include keyword clearly at start
-   - Include benefit/value proposition
-   - Call to action
-   - NO dates or "latest" keywords
-   - Compelling, click-worthy
-
-4. CONTENT (1500+ words) - WRITE FOR EASY READING:
 ${getReadabilityRules()}
-   - Use H2 headers for main sections, H3 for subsections
-   - Include at least one bullet list (<ul><li>) and one numbered list (<ol><li>)
-   - Add a short FAQ section with 3-5 questions at the end (H2 + H3)
-   - Include target keyword in first 100 words, keyword density 1-2%
-   - Write for readers first, optimize for search second
-   - DO NOT reference specific dates or "latest trends" - focus on evergreen content
-   - Use phrases like "current best practices" not "2024 trends"
+${clusterSection ? `
+${clusterSection}
+` : ''}
+━━━ CONTENT STRUCTURE (1500+ words) ━━━
 
-5. IMAGE PROMPT:
-   - Create a professional, descriptive image search query (5-10 words)
-   - The query should visually represent the blog post topic
-   - Use terms suitable for searching stock photo sites
-   - Make it inspiring and professional
-   - Example: "professional business team collaboration meeting"
+1. OPENING (no H2 yet): Start with 1-2 punchy sentences that hook the reader. NOT with "In today's world" or "Di era digital ini". Maybe a surprising fact, a question, or a bold statement about ${topic}. Then a short paragraph that sets up why this matters.
 
-6. STRUCTURE:
-   - Introduction (200 words) - explain why this topic matters NOW and ALWAYS
-   - 4-5 main sections with H2 headers
-   - Each section 200+ words with practical insights
-   - Conclusion with CTA (timeless, not date-based)
-   - FAQ section (timeless questions)
+2. BODY (4-5 H2 sections, each 250-350 words):
+   - Each section must start differently — question, statement, fact, or contrast opener.
+   - Minimum 1 real or realistic example per section ("Imagine you run a small store...", "A client once told me...").
+   - At least one <ul> and one <ol> somewhere in the body — but make them feel natural, not formulaic.
+   - Use <strong> to emphasize 1-2 genuinely important phrases per section, not decoration.
+   - H3 subsections are optional — only use them when the section genuinely needs it.
 
-Return ONLY valid JSON (no markdown):
+3. CLOSING (H2): A direct, opinionated wrap-up. No "In conclusion" or "Sebagai kesimpulan". Share what you actually think the most important takeaway is. A short CTA that sounds human.
+
+4. FAQ (H2, 3-4 questions): Real questions real readers would ask. Answers should be direct and confident, 2-3 sentences each. Not academic.
+
+━━━ SEO REQUIREMENTS ━━━
+- SLUG: URL-friendly (lowercase, hyphens, no dates). Example: "email-marketing-yang-benar-benar-jalan"
+- META DESCRIPTION (150-160 chars): Start with keyword, give a real benefit, end with action. No clickbait.
+- KEYWORDS: 3-5 relevant keywords or phrases (not just single words).
+- Mention the primary keyword naturally in the first 120 words.
+- NO dates in any part of the content.
+
+━━━ QUALITY CHECKLIST (before you output) ━━━
+- [ ] Title sounds like a human wrote it, not a content template
+- [ ] Opening does NOT start with a banned AI phrase
+- [ ] At least 3 different paragraph openers across the article
+- [ ] At least one concrete example or scenario in the content
+- [ ] No banned transition phrases anywhere in the content
+- [ ] Contractions used at least 2-3 times naturally
+- [ ] FAQ answers are direct and specific, not vague
+
+Return ONLY valid JSON (no markdown, no explanation before or after):
 {
-  "title": "SEO-optimized title (50-60 chars, TIMELESS no dates)",
+  "title": "Human-sounding, specific title (50-60 chars, no clichés, no dates)",
   "slug": "url-friendly-slug-no-dates",
-  "metaDescription": "150-160 char description with keyword, no dates",
-  "content": "Full HTML content with <h2>, <h3>, <p>, <strong>, <em> tags. Must be 1500+ words. TIMELESS content, no specific dates.",
-  "imagePrompt": "professional business image search query",
-  "keywords": ["keyword1", "keyword2", "keyword3"],
-  "seoScore": 85-90
+  "metaDescription": "150-160 char description: keyword + real benefit + action, no dates",
+  "content": "Full HTML content. 1500+ words. Uses <h2>, <h3>, <p>, <ul>, <ol>, <li>, <strong>, <em>. Sounds human.",
+  "imagePrompt": "specific descriptive image query (5-8 words, e.g. 'small business owner reviewing marketing analytics')",
+  "keywords": ["specific phrase 1", "keyword 2", "phrase 3"],
+  "seoScore": 80
 }
 
-Make sure JSON is valid. Content must be actual 1500+ words.
-${refinementHint ? `\nREVISION INSTRUCTIONS (MUST FOLLOW):\n${refinementHint}\n` : ''}`;
+JSON must be valid. Content must be 1500+ actual words of HTML.
+${refinementHint ? `\n━━━ REVISION INSTRUCTIONS (FOLLOW EXACTLY) ━━━\n${refinementHint}\n` : ''}`;
 
     console.log(`📝 [Gemini] Generating SEO-optimized content for: ${topic}`);
     const result = await model.generateContent(prompt);

@@ -1,5 +1,6 @@
 import cron from 'node-cron';
-import { getSettings, getSettingsForUser, setCronActive, addLog } from '../utils/database.js';
+import { getSettings, getSettingsForUser, setCronActive, addLog, getClusterState, updateClusterState } from '../utils/database.js';
+import { CLUSTER_MAX_SUPPORTING } from './promptStyle.js';
 import { generatePostContent } from './contentGenerationService.js';
 import { postToWordPress, uploadImageToWordPress, setFeaturedImageForPost } from './wordpressService.js';
 import { getUserCredentialsForPosting, getAiProviderAndKey } from './userCredentialsService.js';
@@ -9,6 +10,115 @@ import { getTrendingTopic, getTrendingKeywords } from './trendingService.js';
 
 let cronJob = null;
 let currentUserId = null;
+let nicheIndex = 0; // Rolling index for niche round-robin
+
+/**
+ * Parse niche string into an array of individual niches.
+ * Supports comma-separated values: "MPASI, Parenting, Investasi"
+ * @param {string} nicheStr - Raw niche string from user settings
+ * @returns {string[]} Array of trimmed, non-empty niche keywords
+ */
+function parseNicheList(nicheStr) {
+  if (!nicheStr || !String(nicheStr).trim()) return [];
+  return String(nicheStr)
+    .split(',')
+    .map(n => n.trim())
+    .filter(Boolean);
+}
+
+/**
+ * Pick the next niche from the list using round-robin (cycling).
+ * Each call advances the global nicheIndex counter.
+ * @param {string[]} niches - Array of niche keywords
+ * @returns {string} The selected niche for this run
+ */
+function pickNicheRoundRobin(niches) {
+  if (!niches || niches.length === 0) return '';
+  if (niches.length === 1) return niches[0];
+  const picked = niches[nicheIndex % niches.length];
+  nicheIndex = (nicheIndex + 1) % niches.length;
+  console.log(`🔄 [Niche Rolling] Picked: "${picked}" (index ${nicheIndex - 1 < 0 ? niches.length - 1 : nicheIndex - 1}/${niches.length - 1})`);
+  return picked;
+}
+
+// ─── TOPIC CLUSTER HELPERS ────────────────────────────────────────────────────
+
+/**
+ * Convert a niche string to a stable key for cluster state storage.
+ */
+function toNicheKey(niche) {
+  return String(niche || '').toLowerCase().trim().replace(/\s+/g, '_');
+}
+
+/**
+ * Determine whether this run should create a pillar or supporting article.
+ * Returns a clusterContext object (or null if niche not set).
+ * @param {string} userId
+ * @param {string} activeNiche - the niche picked for this run
+ * @returns {{ mode: 'pillar'|'supporting', niche, nicheKey, pillarTitle?, pillarUrl?, supportingIndex, fullState }}
+ */
+function resolveClusterContext(userId, activeNiche) {
+  if (!activeNiche) return null;
+
+  const nicheKey = toNicheKey(activeNiche);
+  const fullState = getClusterState(userId);
+  const nicheState = fullState[nicheKey];
+
+  const needsNewPillar =
+    !nicheState ||
+    !nicheState.pillarUrl ||
+    (nicheState.supportingCount || 0) >= CLUSTER_MAX_SUPPORTING;
+
+  if (needsNewPillar) {
+    console.log(`📊 [Cluster] Starting NEW PILLAR for niche "${activeNiche}"`);
+    return { mode: 'pillar', niche: activeNiche, nicheKey, supportingIndex: 0, fullState };
+  }
+
+  const supportingIndex = nicheState.supportingCount || 0;
+  console.log(`📎 [Cluster] SUPPORTING #${supportingIndex + 1}/${CLUSTER_MAX_SUPPORTING} for niche "${activeNiche}" → pillar: "${nicheState.pillarTitle}"`);
+  return {
+    mode: 'supporting',
+    niche: activeNiche,
+    nicheKey,
+    pillarTitle: nicheState.pillarTitle,
+    pillarUrl: nicheState.pillarUrl,
+    pillarPostId: nicheState.pillarPostId,
+    supportingIndex,
+    fullState
+  };
+}
+
+/**
+ * Save cluster state after a successful post.
+ * @param {string} userId
+ * @param {object} clusterContext
+ * @param {{ title: string, link: string, postId: number }} postResult
+ */
+function saveClusterStateAfterPost(userId, clusterContext, postResult) {
+  if (!clusterContext || !postResult?.link) return;
+
+  const { mode, nicheKey, fullState, supportingIndex } = clusterContext;
+
+  if (mode === 'pillar') {
+    fullState[nicheKey] = {
+      pillarTitle: postResult.title,
+      pillarUrl: postResult.link,
+      pillarPostId: postResult.postId,
+      supportingCount: 0,
+      createdAt: new Date().toISOString()
+    };
+    console.log(`✅ [Cluster] Pillar saved: "${postResult.title}" → ${postResult.link}`);
+  } else {
+    const existing = fullState[nicheKey] || {};
+    fullState[nicheKey] = {
+      ...existing,
+      supportingCount: supportingIndex + 1
+    };
+    console.log(`✅ [Cluster] Supporting #${supportingIndex + 1} saved for niche "${clusterContext.niche}"`);
+  }
+
+  updateClusterState(userId, fullState);
+}
 
 function getProviderApiKey(credentials) {
   return credentials.aiProvider === 'gemini' ? credentials.geminiKey :
@@ -77,8 +187,9 @@ function validateSeoGuardrails(postContent, topic) {
   };
 }
 
-async function generateSeoPostWithGuardrails({ provider, apiKey, topic, contentLanguage, sumopodModel }) {
+async function generateSeoPostWithGuardrails({ provider, apiKey, topic, contentLanguage, sumopodModel, clusterContext = null }) {
   const generationOptions = provider === 'sumopod' ? { model: sumopodModel } : {};
+  if (clusterContext) generationOptions.clusterContext = clusterContext;
 
   let postContent = await generatePostContent(provider, apiKey, topic, contentLanguage, '', generationOptions);
   const firstPass = validateSeoGuardrails(postContent, topic);
@@ -187,19 +298,32 @@ async function runAutoPost() {
     };
 
     let topic;
+    let activeNiche = '';
     if (credentials.trendingEnabled) {
-      topic = await getTrendingTopic(contentLanguage, credentials.trendingNiche || '');
+      // Parse comma-separated niches and pick one via round-robin
+      const nicheList = parseNicheList(credentials.trendingNiche || '');
+      activeNiche = pickNicheRoundRobin(nicheList);
+      if (nicheList.length > 1) {
+        console.log(`🎯 [Niche Rolling] Niches available: [${nicheList.join(' | ')}]`);
+      }
+      topic = await getTrendingTopic(contentLanguage, activeNiche);
     } else {
       const list = seoTopicsByLanguage[contentLanguage] || seoTopicsByLanguage.id;
       topic = list[Math.floor(Math.random() * list.length)];
     }
-    
+
+    // Resolve cluster context (pillar vs supporting) based on niche history
+    const clusterContext = resolveClusterContext(currentUserId, activeNiche);
+    // For cluster posts, use the niche as topic so AI can pick the right sub-angle
+    const effectiveTopic = clusterContext ? activeNiche || topic : topic;
+
     const postContent = await generateSeoPostWithGuardrails({
       provider: credentials.aiProvider,
       apiKey: getProviderApiKey(credentials),
-      topic,
+      topic: effectiveTopic,
       contentLanguage,
-      sumopodModel: credentials.sumopodModel
+      sumopodModel: credentials.sumopodModel,
+      clusterContext
     });
 
     const trendingKeywords = credentials.trendingEnabled
@@ -309,7 +433,14 @@ async function runAutoPost() {
       imageUrl: imageData?.url
     });
 
-    console.log(`✅ Post published: ${result.title} (SEO Score: ${result.seoScore}/100)`);
+    // Save cluster state after successful post
+    saveClusterStateAfterPost(currentUserId, clusterContext, {
+      title: postContent.title,
+      link: result.link,
+      postId: result.postId
+    });
+
+    console.log(`✅ Post published: ${result.title} (SEO Score: ${result.seoScore}/100)${clusterContext ? ` [${clusterContext.mode.toUpperCase()}]` : ''}`);
   } catch (error) {
     await addLog(currentUserId, {
       title: 'Auto Post',
@@ -358,19 +489,31 @@ export async function runPostNow(userId) {
     };
 
     let topic;
+    let activeNiche = '';
     if (credentials.trendingEnabled) {
-      topic = await getTrendingTopic(contentLanguage, credentials.trendingNiche || '');
+      // Parse comma-separated niches and pick one via round-robin
+      const nicheList = parseNicheList(credentials.trendingNiche || '');
+      activeNiche = pickNicheRoundRobin(nicheList);
+      if (nicheList.length > 1) {
+        console.log(`🎯 [Niche Rolling] Niches available: [${nicheList.join(' | ')}]`);
+      }
+      topic = await getTrendingTopic(contentLanguage, activeNiche);
     } else {
       const list = seoTopicsByLanguage[contentLanguage] || seoTopicsByLanguage.id;
       topic = list[Math.floor(Math.random() * list.length)];
     }
-    
+
+    // Resolve cluster context (pillar vs supporting) based on niche history
+    const clusterContext = resolveClusterContext(userId, activeNiche);
+    const effectiveTopic = clusterContext ? activeNiche || topic : topic;
+
     const postContent = await generateSeoPostWithGuardrails({
       provider: credentials.aiProvider,
       apiKey: getProviderApiKey(credentials),
-      topic,
+      topic: effectiveTopic,
       contentLanguage,
-      sumopodModel: credentials.sumopodModel
+      sumopodModel: credentials.sumopodModel,
+      clusterContext
     });
 
     const trendingKeywords = credentials.trendingEnabled
@@ -480,7 +623,14 @@ export async function runPostNow(userId) {
       imageUrl: imageData?.url
     });
 
-    console.log(`✅ Post published immediately: ${result.title} (SEO Score: ${result.seoScore}/100)`);
+    // Save cluster state after successful post
+    saveClusterStateAfterPost(userId, clusterContext, {
+      title: postContent.title,
+      link: result.link,
+      postId: result.postId
+    });
+
+    console.log(`✅ Post published immediately: ${result.title} (SEO Score: ${result.seoScore}/100)${clusterContext ? ` [${clusterContext.mode.toUpperCase()}]` : ''}`);
     return result;
   } catch (error) {
     await addLog(userId, {

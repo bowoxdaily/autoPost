@@ -530,18 +530,72 @@ export default function UserCredentials() {
           </div>
 
           <div className="form-group">
-            <label htmlFor="trending_niche">Niche keyword (opsional)</label>
+            <label htmlFor="trending_niche">
+              Niche Keywords — Rolling
+              <span style={{
+                marginLeft: '8px',
+                fontSize: '11px',
+                background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
+                color: 'white',
+                padding: '2px 8px',
+                borderRadius: '99px',
+                fontWeight: '600',
+                letterSpacing: '0.3px'
+              }}>🔄 AUTO ROLLING</span>
+            </label>
             <input
               id="trending_niche"
               type="text"
               name="trending_niche"
               value={credentials.trending_niche || ''}
               onChange={handleInputChange}
-              placeholder="Contoh: marketing, crypto, kesehatan"
+              placeholder="MPASI, Gentle Parenting, Investasi, Skincare, Bisnis Online"
               className="input-field"
             />
+
+            {/* Rolling preview badges */}
+            {credentials.trending_niche && credentials.trending_niche.trim() && (() => {
+              const niches = credentials.trending_niche
+                .split(',')
+                .map(n => n.trim())
+                .filter(Boolean);
+              if (niches.length === 0) return null;
+              return (
+                <div style={{ marginTop: '10px' }}>
+                  <p style={{ fontSize: '11px', color: '#6b7280', marginBottom: '6px', fontWeight: '600' }}>
+                    {niches.length > 1
+                      ? `✅ ${niches.length} niche terdeteksi — akan diposting bergantian:`
+                      : '✅ 1 niche terdeteksi:'}
+                  </p>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                    {niches.map((niche, i) => (
+                      <span key={i} style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                        fontSize: '12px',
+                        padding: '3px 10px',
+                        borderRadius: '99px',
+                        background: i === 0 ? '#ede9fe' : '#f3f4f6',
+                        color: i === 0 ? '#7c3aed' : '#374151',
+                        fontWeight: i === 0 ? '600' : '400',
+                        border: i === 0 ? '1px solid #c4b5fd' : '1px solid #e5e7eb'
+                      }}>
+                        {i === 0 ? '▶' : `${i + 1}`} {niche}
+                      </span>
+                    ))}
+                  </div>
+                  {niches.length > 1 && (
+                    <p style={{ fontSize: '11px', color: '#9ca3af', marginTop: '6px' }}>
+                      💡 Setiap kali post, sistem memilih niche berikutnya secara bergilir (round-robin).
+                    </p>
+                  )}
+                </div>
+              );
+            })()}
+
             <p className="text-xs text-gray-500 mt-2">
-              Jika diisi, sistem akan mencoba memilih tren yang paling mendekati niche ini.
+              Pisahkan dengan koma untuk <strong>rolling niche otomatis</strong>. Contoh: <code>MPASI, Parenting, Investasi, Skincare</code> → setiap post akan berganti niche secara bergilir.
             </p>
           </div>
         </section>

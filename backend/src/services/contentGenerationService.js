@@ -37,7 +37,7 @@ export async function generatePostContent(provider, apiKey, topic, language = 'i
 
   switch (provider?.toLowerCase()) {
     case 'gemini':
-      return await generateWithGemini(apiKey, topic, language, refinementHint);
+      return await generateWithGemini(apiKey, topic, language, refinementHint, options.clusterContext || null);
 
     case 'sumopod':
       return await generateWithSumopod(apiKey, topic, language, refinementHint, options);

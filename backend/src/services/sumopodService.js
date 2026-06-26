@@ -3,7 +3,10 @@ import {
   getLanguageInstruction,
   getFallbackTitle,
   getTitleStyleRules,
-  getReadabilityRules
+  getReadabilityRules,
+  getSystemPersona,
+  getPillarPromptSection,
+  getSupportingPromptSection
 } from './promptStyle.js';
 
 function getSumopodBaseUrl() {
@@ -279,11 +282,11 @@ function parseGeneratedPayload(rawContent, topic) {
   }
 }
 
-function buildMessages(prompt) {
+function buildMessages(prompt, language = 'id') {
   return [
     {
       role: 'system',
-      content: 'You are an expert SEO content writer. Always return clean JSON only.'
+      content: getSystemPersona(language)
     },
     {
       role: 'user',
@@ -302,10 +305,10 @@ function errorMessageOf(error) {
 }
 
 // Single chat-completion call with a specific parameter profile.
-async function callChatCompletion({ endpoint, apiKey, model, maxTokens, timeoutMs, prompt, profile }) {
+async function callChatCompletion({ endpoint, apiKey, model, maxTokens, timeoutMs, prompt, profile, language = 'id' }) {
   const payload = {
     model,
-    messages: buildMessages(prompt)
+    messages: buildMessages(prompt, language)
   };
 
   if (profile.includeTemperature) {
@@ -338,7 +341,7 @@ async function callChatCompletion({ endpoint, apiKey, model, maxTokens, timeoutM
 // Adaptive request: progressively drops/swaps parameters that a given model
 // rejects (JSON mode, temperature, max_tokens vs max_completion_tokens) so that
 // any OpenAI-compatible Sumopod model can be used.
-async function requestSumopodContent({ endpoint, apiKey, model, maxTokens, timeoutMs, prompt }) {
+async function requestSumopodContent({ endpoint, apiKey, model, maxTokens, timeoutMs, prompt, language = 'id' }) {
   const profile = {
     useJsonMode: true,
     includeTemperature: true,
@@ -356,7 +359,8 @@ async function requestSumopodContent({ endpoint, apiKey, model, maxTokens, timeo
         maxTokens: effectiveMaxTokens,
         timeoutMs,
         prompt,
-        profile
+        profile,
+        language
       });
     } catch (error) {
       const status = error?.response?.status;
@@ -400,6 +404,7 @@ async function requestSumopodContent({ endpoint, apiKey, model, maxTokens, timeo
     maxTokens: 0,
     timeoutMs,
     prompt,
+    language,
     profile: { useJsonMode: false, includeTemperature: false, tokenParam: 'max_tokens' }
   });
 }
@@ -423,29 +428,81 @@ export async function generatePostContent(apiKey, topic, language = 'id', refine
   const retryMaxTokens = getOptionalTokenEnv('SUMOPOD_RETRY_MAX_TOKENS', 0);
 
   const languageInstruction = getLanguageInstruction(language);
+  const clusterContext = options.clusterContext || null;
 
-  const prompt = `Generate a SEO-optimized blog post about "${topic}".
+  // Build cluster section if context provided
+  let clusterSection = '';
+  if (clusterContext) {
+    if (clusterContext.mode === 'pillar') {
+      clusterSection = getPillarPromptSection(clusterContext.niche, language);
+    } else if (clusterContext.mode === 'supporting') {
+      clusterSection = getSupportingPromptSection(
+        clusterContext.niche,
+        clusterContext.pillarTitle,
+        clusterContext.pillarUrl,
+        clusterContext.supportingIndex,
+        language
+      );
+    }
+  }
 
-LANGUAGE REQUIREMENT:
-${languageInstruction}
+  const prompt = `Write a blog post about "${topic}".
+
+LANGUAGE: ${languageInstruction}
+
+━━━ HUMAN WRITING — THIS IS THE MOST IMPORTANT REQUIREMENT ━━━
+This post MUST pass AI content detection tools (GPTZero, Turnitin, Originality.ai).
+Write exactly as an experienced human blogger would — with genuine personality, rhythm variation, and real opinions.
 
 ${getTitleStyleRules(topic)}
 
 ${getReadabilityRules()}
-- Use <h2>/<h3>, at least one <ul> and one <ol>, and a short FAQ at the end.
+${clusterSection ? `
+${clusterSection}
+` : ''}
+━━━ CONTENT STRUCTURE (1500+ words) ━━━
 
-Return ONLY valid JSON (no markdown):
+1. OPENING (no H2 yet): Start with 1-2 punchy sentences that hook the reader. NOT with "In today's world" or "Di era digital ini". Maybe a surprising fact, a question, or a bold statement about ${topic}. Then a short paragraph that sets up why this matters.
+
+2. BODY (4-5 H2 sections, each 250-350 words):
+   - Each section must start differently — question, statement, fact, or contrast opener.
+   - Minimum 1 real or realistic example per section.
+   - At least one <ul> and one <ol> somewhere in the body — but make them feel natural, not formulaic.
+   - Use <strong> to emphasize 1-2 genuinely important phrases per section.
+   - H3 subsections are optional — only use them when the section genuinely needs it.
+
+3. CLOSING (H2): A direct, opinionated wrap-up. No "In conclusion" or "Sebagai kesimpulan". Share what you actually think the most important takeaway is. A short CTA that sounds human.
+
+4. FAQ (H2, 3-4 questions): Real questions real readers would ask. Direct and confident answers, 2-3 sentences each.
+
+━━━ SEO REQUIREMENTS ━━━
+- SLUG: URL-friendly (lowercase, hyphens, no dates). Example: "email-marketing-yang-benar-benar-jalan"
+- META DESCRIPTION (150-160 chars): Start with keyword, give a real benefit, end with action. No clickbait.
+- KEYWORDS: 3-5 relevant keyword phrases.
+- Mention the primary keyword naturally in the first 120 words.
+- NO dates in any part of the content.
+
+━━━ QUALITY CHECKLIST (before you output) ━━━
+- [ ] Title sounds like a human wrote it, not a content template
+- [ ] Opening does NOT start with a banned AI phrase
+- [ ] At least 3 different paragraph openers across the article
+- [ ] At least one concrete example or scenario in the content
+- [ ] No banned transition phrases anywhere in the content
+- [ ] Contractions used at least 2-3 times naturally
+- [ ] FAQ answers are direct and specific, not vague
+
+Return ONLY valid JSON (no markdown, no explanation before or after):
 {
-  "title": "Natural human-sounding title (50-60 chars, timeless, no clichés)",
-  "slug": "url-friendly-slug",
-  "metaDescription": "150-160 chars",
-  "content": "Full HTML content with <h2>, <h3>, <p>, <strong>, <em> tags. Must be 1200+ words, easy to read.",
-  "imagePrompt": "professional business image search query",
-  "keywords": ["keyword1", "keyword2", "keyword3"],
-  "seoScore": 85
+  "title": "Human-sounding, specific title (50-60 chars, no clichés, no dates)",
+  "slug": "url-friendly-slug-no-dates",
+  "metaDescription": "150-160 char: keyword + real benefit + action, no dates",
+  "content": "Full HTML content. 1500+ words. Uses <h2>, <h3>, <p>, <ul>, <ol>, <li>, <strong>, <em>. Sounds human.",
+  "imagePrompt": "specific descriptive image query (5-8 words)",
+  "keywords": ["specific phrase 1", "keyword 2", "phrase 3"],
+  "seoScore": 80
 }
 
-${refinementHint ? `REVISION INSTRUCTIONS (MUST FOLLOW):\n${refinementHint}` : ''}`;
+${refinementHint ? `━━━ REVISION INSTRUCTIONS (FOLLOW EXACTLY) ━━━\n${refinementHint}` : ''}`;
 
   try {
     let rawContent = await requestSumopodContent({
@@ -454,7 +511,8 @@ ${refinementHint ? `REVISION INSTRUCTIONS (MUST FOLLOW):\n${refinementHint}` : '
       model,
       maxTokens,
       timeoutMs,
-      prompt
+      prompt,
+      language
     });
 
     let result = parseGeneratedPayload(rawContent, topic);
@@ -476,7 +534,8 @@ ${refinementHint ? `REVISION INSTRUCTIONS (MUST FOLLOW):\n${refinementHint}` : '
           model,
           maxTokens: retryCap,
           timeoutMs,
-          prompt
+          prompt,
+          language
         });
         result = parseGeneratedPayload(rawContent, topic);
       }
